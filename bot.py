@@ -8,6 +8,7 @@ import time
 import subprocess
 import asyncio
 import urllib.parse
+import uuid
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
@@ -44,6 +45,8 @@ TEMPLATES = {
     "swot": {"name": "📊 SWOT-анализ", "prompt": "Проведи SWOT-анализ. Спроси бизнес, разбери: Strengths, Weaknesses, Opportunities, Threats."},
 }
 
+
+# ─── Хранилище ───
 
 def get_user(chat_id, key, default=""):
     uid = str(chat_id)
@@ -114,10 +117,17 @@ def update_stats(chat_id):
     set_user(chat_id, "stats", stats)
 
 
+# ─── Инструменты ───
+
 def search_web(query):
     try:
         from bs4 import BeautifulSoup
-        resp = requests.get("https://html.duckduckgo.com/html/", params={"q": query}, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+        resp = requests.get(
+            "https://html.duckduckgo.com/html/",
+            params={"q": query},
+            headers={"User-Agent": "Mozilla/5.0"},
+            timeout=10
+        )
         soup = BeautifulSoup(resp.text, "html.parser")
         results = []
         for r in soup.select(".result__body")[:5]:
@@ -127,7 +137,7 @@ def search_web(query):
                 results.append(t.get_text().strip() + ": " + s.get_text().strip())
         return "\n\n".join(results) if results else "Ничего не найдено"
     except Exception as e:
-        return "Ошибка: " + str(e)
+        return "Ошибка поиска: " + str(e)
 
 
 def parse_website(url):
@@ -140,33 +150,108 @@ def parse_website(url):
         lines = [l.strip() for l in soup.get_text().splitlines() if l.strip()]
         return "\n".join(lines[:50])[:2000]
     except Exception as e:
-        return "Ошибка: " + str(e)
+        return "Ошибка парсинга: " + str(e)
 
+
+# ─── ГЕНЕРАЦИЯ КАРТИНОК (ИСПРАВЛЕНО) ───
 
 def generate_image(prompt):
+    """Генерирует картинку через Pollinations AI и скачивает её"""
     encoded = urllib.parse.quote(prompt)
     url = f"https://image.pollinations.ai/prompt/{encoded}?width=800&height=600&nologo=true"
-    return url
 
+    file_path = f"/tmp/image_{uuid.uuid4().hex[:8]}.jpg"
+    try:
+        # Скачиваем картинку (Pollinations генерирует на лету, может занять время)
+        resp = requests.get(url, timeout=120, stream=True)
+        if resp.status_code == 200:
+            with open(file_path, "wb") as f:
+                for chunk in resp.iter_content(1024):
+                    f.write(chunk)
+            # Проверяем что файл не пустой
+            if os.path.exists(file_path) and os.path.getsize(file_path) > 1000:
+                return file_path
+            else:
+                print(f"Image file too small or empty: {file_path}")
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                return None
+        else:
+            print(f"Image download failed: {resp.status_code}")
+            return None
+    except Exception as e:
+        print(f"Image generation error: {e}")
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        return None
+
+
+# ─── ОЗВУЧКА (ИСПРАВЛЕНО) ───
 
 def create_voice(text):
+    """Создаёт голосовое сообщение из текста"""
+    file_id = uuid.uuid4().hex[:8]
+    mp3_path = f"/tmp/voice_{file_id}.mp3"
+    ogg_path = f"/tmp/voice_{file_id}.ogg"
+
+    # Способ 1: edge_tts + ffmpeg
     try:
         import edge_tts
-        async def do_tts():
-            communicate = edge_tts.Communicate(text, "ru-RU-DmitryNeural", rate="-10%")
-            await communicate.save("/tmp/voice.mp3")
-        asyncio.run(do_tts())
 
-        subprocess.run(
-            ["ffmpeg", "-y", "-i", "/tmp/voice.mp3", "-c:a", "libopus", "-b:a", "64k", "/tmp/voice.ogg"],
-            timeout=30, capture_output=True
-        )
-        if os.path.exists("/tmp/voice.ogg"):
-            return "/tmp/voice.ogg"
+        # Безопасный запуск async в синхронном контексте
+        loop = asyncio.new_event_loop()
+        try:
+            communicate = edge_tts.Communicate(text, "ru-RU-DmitryNeural", rate="-10%")
+            loop.run_until_complete(communicate.save(mp3_path))
+        finally:
+            loop.close()
+
+        if os.path.exists(mp3_path) and os.path.getsize(mp3_path) > 100:
+            # Пробуем конвертировать в OGG для Telegram
+            try:
+                result = subprocess.run(
+                    ["ffmpeg", "-y", "-i", mp3_path, "-c:a", "libopus", "-b:a", "64k", ogg_path],
+                    timeout=30, capture_output=True
+                )
+                if result.returncode == 0 and os.path.exists(ogg_path) and os.path.getsize(ogg_path) > 100:
+                    # Удаляем mp3, возвращаем ogg
+                    os.remove(mp3_path)
+                    return ogg_path
+            except (subprocess.TimeoutExpired, FileNotFoundError) as e:
+                print(f"ffmpeg failed: {e}")
+
+            # ffmpeg не сработал — отправляем mp3 как есть
+            if os.path.exists(ogg_path):
+                os.remove(ogg_path)
+            return mp3_path
+
+    except ImportError:
+        print("edge_tts not installed, trying gTTS")
     except Exception as e:
-        print("Voice error:", e)
+        print(f"edge_tts error: {e}")
+
+    # Очистка после edge_tts если не получилось
+    for p in [mp3_path, ogg_path]:
+        if os.path.exists(p):
+            os.remove(p)
+
+    # Способ 2: gTTS (fallback)
+    try:
+        from gtts import gTTS
+        tts = gTTS(text=text, lang='ru')
+        fallback_path = f"/tmp/voice_{file_id}_gtts.mp3"
+        tts.save(fallback_path)
+        if os.path.exists(fallback_path) and os.path.getsize(fallback_path) > 100:
+            return fallback_path
+    except ImportError:
+        print("gTTS not installed either")
+    except Exception as e:
+        print(f"gTTS error: {e}")
+
     return None
 
+
+# ─── AI ───
 
 def call_ai(system_prompt, user_message, context):
     messages = [{"role": "system", "content": system_prompt}]
@@ -186,11 +271,15 @@ def call_ai(system_prompt, user_message, context):
             "max_tokens": 3000,
         }, timeout=60)
         if resp.status_code != 200:
+            print(f"AI error {resp.status_code}: {resp.text[:200]}")
             return "AI временно недоступен."
         return resp.json()["choices"][0]["message"]["content"]
-    except:
+    except Exception as e:
+        print(f"AI connection error: {e}")
         return "Ошибка соединения с AI."
 
+
+# ─── Telegram API ───
 
 def send_msg(chat_id, text, keyboard=None):
     url = "https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendMessage"
@@ -201,43 +290,100 @@ def send_msg(chat_id, text, keyboard=None):
         if keyboard and not text:
             payload["reply_markup"] = json.dumps(keyboard)
         try:
-            requests.post(url, json=payload, timeout=30)
-        except:
-            pass
+            resp = requests.post(url, json=payload, timeout=30)
+            if resp.status_code != 200:
+                print(f"send_msg error: {resp.text[:200]}")
+        except Exception as e:
+            print(f"send_msg exception: {e}")
 
 
-def send_photo(chat_id, photo_url, caption=""):
+def send_photo(chat_id, file_path, caption=""):
+    """Отправляет фото файлом (не URL)"""
     try:
-        requests.post("https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendPhoto",
-            json={"chat_id": chat_id, "photo": photo_url, "caption": caption[:1000]}, timeout=30)
-    except:
-        pass
+        if file_path and os.path.exists(file_path):
+            with open(file_path, "rb") as f:
+                resp = requests.post(
+                    "https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendPhoto",
+                    data={"chat_id": chat_id, "caption": caption[:1000]},
+                    files={"photo": f},
+                    timeout=60
+                )
+                if resp.status_code != 200:
+                    print(f"send_photo error: {resp.text[:200]}")
+                    send_msg(chat_id, "❌ Не удалось отправить фото.")
+        else:
+            print(f"send_photo: file not found {file_path}")
+            send_msg(chat_id, "❌ Не удалось сгенерировать картинку.")
+    except Exception as e:
+        print(f"send_photo exception: {e}")
+        send_msg(chat_id, "❌ Ошибка отправки фото.")
+    finally:
+        # Удаляем файл после отправки
+        if file_path and os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+            except:
+                pass
 
 
 def send_voice(chat_id, file_path):
+    """Отправляет голосовое сообщение"""
     try:
-        with open(file_path, "rb") as f:
-            requests.post("https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendVoice",
-                data={"chat_id": chat_id}, files={"voice": f}, timeout=30)
-    except:
-        pass
+        if file_path and os.path.exists(file_path):
+            with open(file_path, "rb") as f:
+                # Определяем: ogg отправляем как voice, mp3 как audio
+                if file_path.endswith(".ogg"):
+                    resp = requests.post(
+                        "https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendVoice",
+                        data={"chat_id": chat_id},
+                        files={"voice": f},
+                        timeout=30
+                    )
+                else:
+                    resp = requests.post(
+                        "https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendAudio",
+                        data={"chat_id": chat_id, "title": "Озвучка"},
+                        files={"audio": f},
+                        timeout=30
+                    )
+                if resp.status_code != 200:
+                    print(f"send_voice error: {resp.text[:200]}")
+                    send_msg(chat_id, "❌ Не удалось отправить голосовое.")
+        else:
+            send_msg(chat_id, "❌ Не удалось создать голосовое.")
+    except Exception as e:
+        print(f"send_voice exception: {e}")
+        send_msg(chat_id, "❌ Ошибка отправки голосового.")
+    finally:
+        # Удаляем файл после отправки
+        if file_path and os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+            except:
+                pass
 
 
 def send_typing(chat_id):
     try:
-        requests.post("https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendChatAction",
-            json={"chat_id": chat_id, "action": "typing"}, timeout=10)
+        requests.post(
+            "https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendChatAction",
+            json={"chat_id": chat_id, "action": "typing"}, timeout=10
+        )
     except:
         pass
 
 
 def answer_cb(callback_id, text=""):
     try:
-        requests.post("https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/answerCallbackQuery",
-            json={"callback_query_id": callback_id, "text": text}, timeout=10)
+        requests.post(
+            "https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/answerCallbackQuery",
+            json={"callback_query_id": callback_id, "text": text}, timeout=10
+        )
     except:
         pass
 
+
+# ─── Клавиатуры ───
 
 def main_kb():
     return {"inline_keyboard": [
@@ -285,6 +431,8 @@ def after_kb():
         [{"text": "🏠 Меню", "callback_data": "back_main"}],
     ]}
 
+
+# ─── Обработчики ───
 
 def handle_callback(cb):
     chat_id = cb["message"]["chat"]["id"]
@@ -396,21 +544,32 @@ def handle_callback(cb):
     elif data == "act_image":
         answer_cb(cb_id)
         send_typing(chat_id)
-        prompt = call_ai("Ты генератор промтов для картинок.", "Создай короткий промт на английском для генерации картинки по теме последнего сообщения. Только промт, ничего больше. Максимум 10 слов.", get_context(chat_id))
-        img_url = generate_image(prompt)
-        send_photo(chat_id, img_url, "🖼 " + prompt)
+        # Генерируем промт на английском через AI
+        prompt = call_ai(
+            "Ты генератор промтов для картинок. Отвечай ТОЛЬКО промтом, без пояснений.",
+            "Создай короткий промт на английском для генерации картинки по теме последнего сообщения. Только промт. Максимум 10 слов.",
+            get_context(chat_id)
+        )
+        prompt = prompt.strip().strip('"').strip("'")[:200]
+        send_msg(chat_id, f"🎨 Генерирую: {prompt}\n⏳ Подожди 15-30 секунд...")
+        img_path = generate_image(prompt)
+        send_photo(chat_id, img_path, "🖼 " + prompt)
 
     elif data == "act_voice":
         answer_cb(cb_id)
         send_typing(chat_id)
         ctx = get_context(chat_id)
-        last_text = ctx[-1]["text"] if ctx else "Нечего озвучивать"
-        short = last_text[:500]
-        voice_path = create_voice(short)
+        if ctx:
+            last_text = ctx[-1]["text"][:500]
+        else:
+            send_msg(chat_id, "❌ Нечего озвучивать. Сначала задай вопрос.")
+            return
+        send_msg(chat_id, "🎙 Создаю голосовое...")
+        voice_path = create_voice(last_text)
         if voice_path:
             send_voice(chat_id, voice_path)
         else:
-            send_msg(chat_id, "Не удалось создать голосовое.")
+            send_msg(chat_id, "❌ Не удалось создать голосовое. Убедитесь что edge-tts или gTTS установлены.")
 
     elif data == "act_fav":
         answer_cb(cb_id, "Добавлено в избранное!")
@@ -433,7 +592,7 @@ def handle_callback(cb):
                 text += f"{i}. [{f['date']}]\n{f['text'][:200]}\n\n"
             send_msg(chat_id, text, main_kb())
         else:
-            send_msg(chat_id, "📌 Избранное пусто.\n\nНажми '📌 В избранное' после ответа чтобы сохранить.", main_kb())
+            send_msg(chat_id, "📌 Избранное пусто.\n\nНажми '📌 В избранное' после ответа.", main_kb())
 
     elif data == "show_notes":
         answer_cb(cb_id)
@@ -448,7 +607,7 @@ def handle_callback(cb):
                 [{"text": "⬅️ Назад", "callback_data": "back_main"}],
             ]})
         else:
-            send_msg(chat_id, "📝 Заметок нет.\n\nНажми '📝 В заметки' после ответа или напиши /note текст", main_kb())
+            send_msg(chat_id, "📝 Заметок нет.\n\nНажми '📝 В заметки' после ответа или /note текст", main_kb())
 
     elif data == "tool_newnote":
         answer_cb(cb_id)
@@ -518,19 +677,20 @@ def handle_message(chat_id, text):
     if waiting == "image":
         set_user(chat_id, "waiting", "")
         send_typing(chat_id)
-        img_url = generate_image(text)
-        send_photo(chat_id, img_url, "🖼 " + text)
-        send_msg(chat_id, "Готово!", after_kb())
+        send_msg(chat_id, f"🎨 Генерирую: {text}\n⏳ Подожди 15-30 секунд...")
+        img_path = generate_image(text)
+        send_photo(chat_id, img_path, "🖼 " + text[:200])
         return
 
     if waiting == "voice":
         set_user(chat_id, "waiting", "")
         send_typing(chat_id)
-        voice_path = create_voice(text)
+        send_msg(chat_id, "🎙 Создаю голосовое...")
+        voice_path = create_voice(text[:500])
         if voice_path:
             send_voice(chat_id, voice_path)
         else:
-            send_msg(chat_id, "Не удалось озвучить.")
+            send_msg(chat_id, "❌ Не удалось озвучить. Проверьте что edge-tts или gTTS установлены.")
         return
 
     if waiting == "summarize":
@@ -570,6 +730,8 @@ def handle_message(chat_id, text):
     add_context(chat_id, "assistant", answer)
     send_msg(chat_id, answer, after_kb())
 
+
+# ─── Flask routes ───
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
