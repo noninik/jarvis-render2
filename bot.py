@@ -189,13 +189,7 @@ def generate_image(prompt):
     for url in urls:
         try:
             print(f"Trying image: {url}")
-            resp = requests.get(
-                url,
-                timeout=120,
-                stream=True,
-                allow_redirects=True,
-                headers={"User-Agent": "Mozilla/5.0"}
-            )
+            resp = requests.get(url, timeout=120, stream=True, allow_redirects=True, headers={"User-Agent": "Mozilla/5.0"})
             content_type = resp.headers.get("content-type", "")
             print(f"Image response: status={resp.status_code}, type={content_type}")
 
@@ -204,19 +198,13 @@ def generate_image(prompt):
                     for chunk in resp.iter_content(4096):
                         if chunk:
                             f.write(chunk)
-
                 file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
                 print(f"Image saved: size={file_size}")
-
                 if file_size > 5000:
                     return file_path
                 else:
-                    print(f"Image too small: {file_size}")
                     if os.path.exists(file_path):
                         os.remove(file_path)
-            else:
-                print(f"Not image: {resp.status_code} {content_type}")
-
         except requests.Timeout:
             print("Image timeout")
             continue
@@ -225,13 +213,7 @@ def generate_image(prompt):
             continue
 
     try:
-        print("Trying picsum fallback...")
-        resp = requests.get(
-            "https://picsum.photos/800/600",
-            timeout=30,
-            allow_redirects=True,
-            headers={"User-Agent": "Mozilla/5.0"}
-        )
+        resp = requests.get("https://picsum.photos/800/600", timeout=30, allow_redirects=True, headers={"User-Agent": "Mozilla/5.0"})
         if resp.status_code == 200 and len(resp.content) > 5000:
             with open(file_path, "wb") as f:
                 f.write(resp.content)
@@ -253,7 +235,6 @@ def create_voice(text):
 
     try:
         import edge_tts
-
         loop = asyncio.new_event_loop()
         try:
             communicate = edge_tts.Communicate(text, "ru-RU-DmitryNeural", rate="-10%")
@@ -272,11 +253,9 @@ def create_voice(text):
                     return ogg_path
             except (subprocess.TimeoutExpired, FileNotFoundError) as e:
                 print(f"ffmpeg failed: {e}")
-
             if os.path.exists(ogg_path):
                 os.remove(ogg_path)
             return mp3_path
-
     except ImportError:
         print("edge_tts not installed")
     except Exception as e:
@@ -331,14 +310,17 @@ def call_ai(system_prompt, user_message, context):
 
 # ─── Telegram API ───
 
-def send_msg(chat_id, text, keyboard=None):
+def send_msg(chat_id, text, reply_kb=None, inline_kb=None):
     url = "https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendMessage"
     while text:
         chunk = text[:4000]
         text = text[4000:]
         payload = {"chat_id": chat_id, "text": chunk}
-        if keyboard and not text:
-            payload["reply_markup"] = keyboard
+        if not text:
+            if inline_kb:
+                payload["reply_markup"] = inline_kb
+            elif reply_kb:
+                payload["reply_markup"] = reply_kb
         try:
             resp = requests.post(url, json=payload, timeout=30)
             if resp.status_code != 200:
@@ -358,13 +340,9 @@ def send_photo(chat_id, file_path, caption=""):
                     timeout=60
                 )
                 if resp.status_code == 200:
-                    print("Photo sent OK")
                     return
                 else:
                     print(f"send_photo error: {resp.text[:200]}")
-        else:
-            print(f"send_photo: no file at {file_path}")
-
         send_msg(chat_id, "❌ Не удалось сгенерировать картинку. Попробуй другой промт на английском.")
     except Exception as e:
         print(f"send_photo exception: {e}")
@@ -384,22 +362,16 @@ def send_voice(chat_id, file_path):
                 if file_path.endswith(".ogg"):
                     resp = requests.post(
                         "https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendVoice",
-                        data={"chat_id": chat_id},
-                        files={"voice": f},
-                        timeout=30
+                        data={"chat_id": chat_id}, files={"voice": f}, timeout=30
                     )
                 else:
                     resp = requests.post(
                         "https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendAudio",
-                        data={"chat_id": chat_id, "title": "Озвучка"},
-                        files={"audio": f},
-                        timeout=30
+                        data={"chat_id": chat_id, "title": "Озвучка"}, files={"audio": f}, timeout=30
                     )
                 if resp.status_code != 200:
                     print(f"send_voice error: {resp.text[:200]}")
                     send_msg(chat_id, "❌ Не удалось отправить голосовое.")
-                else:
-                    print("Voice sent OK")
         else:
             send_msg(chat_id, "❌ Не удалось создать голосовое.")
     except Exception as e:
@@ -423,7 +395,17 @@ def send_typing(chat_id):
         pass
 
 
-# ─── Reply-клавиатуры ───
+def answer_cb(callback_id, text=""):
+    try:
+        requests.post(
+            "https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/answerCallbackQuery",
+            json={"callback_query_id": callback_id, "text": text}, timeout=10
+        )
+    except:
+        pass
+
+
+# ─── Reply-клавиатуры (внизу экрана) ───
 
 def main_reply_kb():
     return {
@@ -479,25 +461,252 @@ def after_reply_kb():
     }
 
 
-# ─── Обработчик ───
+# ─── Inline-клавиатуры (в сообщениях) ───
+
+def main_inline_kb():
+    return {"inline_keyboard": [
+        [{"text": "💬 Помощник", "callback_data": "mode_helper"}, {"text": "📊 Бизнес", "callback_data": "mode_business"}],
+        [{"text": "✍️ Контент", "callback_data": "mode_content"}, {"text": "💻 Код", "callback_data": "mode_coder"}],
+        [{"text": "📋 Стартап", "callback_data": "mode_startup"}, {"text": "🔍 Исследование", "callback_data": "mode_research"}],
+        [{"text": "🚀 Автоматизация", "callback_data": "mode_automate"}, {"text": "📝 Копирайтинг", "callback_data": "mode_copywriter"}],
+        [{"text": "🎯 Коуч", "callback_data": "mode_coach"}, {"text": "🌍 Переводчик", "callback_data": "mode_translator"}],
+        [{"text": "📦 Шаблоны", "callback_data": "show_templates"}, {"text": "🛠 Инструменты", "callback_data": "show_tools"}],
+        [{"text": "📌 Избранное", "callback_data": "show_favs"}, {"text": "📝 Заметки", "callback_data": "show_notes"}],
+    ]}
+
+
+def tpl_inline_kb():
+    return {"inline_keyboard": [
+        [{"text": "📋 Бизнес-план", "callback_data": "tpl_biz_plan"}],
+        [{"text": "📅 Контент-план", "callback_data": "tpl_content_plan"}],
+        [{"text": "🔍 Конкуренты", "callback_data": "tpl_competitor"}],
+        [{"text": "📄 Резюме", "callback_data": "tpl_resume"}],
+        [{"text": "✍️ Пак постов", "callback_data": "tpl_post_pack"}],
+        [{"text": "🌐 Лендинг", "callback_data": "tpl_landing"}],
+        [{"text": "📧 Email-цепочка", "callback_data": "tpl_email_chain"}],
+        [{"text": "📊 SWOT", "callback_data": "tpl_swot"}],
+        [{"text": "⬅️ Назад", "callback_data": "back_main"}],
+    ]}
+
+
+def tools_inline_kb():
+    return {"inline_keyboard": [
+        [{"text": "🔍 Поиск", "callback_data": "tool_search"}, {"text": "🌐 Парсинг", "callback_data": "tool_parse"}],
+        [{"text": "🖼 Картинка", "callback_data": "tool_image"}, {"text": "🎙 Голос", "callback_data": "tool_voice"}],
+        [{"text": "📝 Суммаризация", "callback_data": "tool_summarize"}],
+        [{"text": "🇬🇧→🇷🇺", "callback_data": "tool_enru"}, {"text": "🇷🇺→🇬🇧", "callback_data": "tool_ruen"}],
+        [{"text": "🗑 Очистить", "callback_data": "tool_clear"}],
+        [{"text": "⬅️ Назад", "callback_data": "back_main"}],
+    ]}
+
+
+def after_inline_kb():
+    return {"inline_keyboard": [
+        [{"text": "🔄 Подробнее", "callback_data": "act_more"}, {"text": "✏️ Переписать", "callback_data": "act_rewrite"}],
+        [{"text": "📋 Список", "callback_data": "act_list"}, {"text": "🎯 Пример", "callback_data": "act_example"}],
+        [{"text": "🖼 Картинка", "callback_data": "act_image"}, {"text": "🎙 Озвучить", "callback_data": "act_voice"}],
+        [{"text": "📌 В избранное", "callback_data": "act_fav"}, {"text": "📝 В заметки", "callback_data": "act_note"}],
+        [{"text": "🏠 Меню", "callback_data": "back_main"}],
+    ]}
+
+
+# ─── Callback обработчик (inline кнопки) ───
+
+def handle_callback(cb):
+    chat_id = cb["message"]["chat"]["id"]
+    cb_id = cb["id"]
+    data = cb["data"]
+
+    if data.startswith("mode_"):
+        mode_key = data[5:]
+        if mode_key in MODES:
+            set_user(chat_id, "mode", mode_key)
+            set_user(chat_id, "context", [])
+            set_user(chat_id, "waiting", "")
+            m = MODES[mode_key]
+            answer_cb(cb_id, m["name"])
+            send_msg(chat_id, m["emoji"] + " Режим: " + m["name"] + "\n\nЗадавай вопросы!",
+                     reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
+
+    elif data == "show_templates":
+        answer_cb(cb_id)
+        send_msg(chat_id, "📦 Шаблоны:", reply_kb=templates_reply_kb(), inline_kb=tpl_inline_kb())
+
+    elif data.startswith("tpl_"):
+        key = data[4:]
+        if key in TEMPLATES:
+            answer_cb(cb_id, TEMPLATES[key]["name"])
+            send_typing(chat_id)
+            update_stats(chat_id)
+            answer = call_ai(get_mode_prompt(chat_id), TEMPLATES[key]["prompt"], get_context(chat_id))
+            add_context(chat_id, "user", TEMPLATES[key]["prompt"])
+            add_context(chat_id, "assistant", answer)
+            send_msg(chat_id, answer, reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
+
+    elif data == "show_tools":
+        answer_cb(cb_id)
+        send_msg(chat_id, "🛠 Инструменты:", reply_kb=tools_reply_kb(), inline_kb=tools_inline_kb())
+
+    elif data == "tool_search":
+        answer_cb(cb_id)
+        set_user(chat_id, "waiting", "search")
+        send_msg(chat_id, "🔍 Напиши запрос:")
+
+    elif data == "tool_parse":
+        answer_cb(cb_id)
+        set_user(chat_id, "waiting", "parse")
+        send_msg(chat_id, "🌐 Отправь ссылку:")
+
+    elif data == "tool_image":
+        answer_cb(cb_id)
+        set_user(chat_id, "waiting", "image")
+        send_msg(chat_id, "🖼 Опиши что нарисовать (лучше на английском):")
+
+    elif data == "tool_voice":
+        answer_cb(cb_id)
+        set_user(chat_id, "waiting", "voice")
+        send_msg(chat_id, "🎙 Напиши текст для озвучки:")
+
+    elif data == "tool_summarize":
+        answer_cb(cb_id)
+        set_user(chat_id, "waiting", "summarize")
+        send_msg(chat_id, "📝 Отправь текст:")
+
+    elif data == "tool_enru":
+        answer_cb(cb_id)
+        set_user(chat_id, "waiting", "enru")
+        send_msg(chat_id, "🇬🇧→🇷🇺 Текст на английском:")
+
+    elif data == "tool_ruen":
+        answer_cb(cb_id)
+        set_user(chat_id, "waiting", "ruen")
+        send_msg(chat_id, "🇷🇺→🇬🇧 Текст на русском:")
+
+    elif data == "tool_clear":
+        answer_cb(cb_id, "Очищено!")
+        set_user(chat_id, "context", [])
+        send_msg(chat_id, "🗑 Очищено!", reply_kb=main_reply_kb(), inline_kb=main_inline_kb())
+
+    elif data == "act_more":
+        answer_cb(cb_id)
+        send_typing(chat_id)
+        answer = call_ai(get_mode_prompt(chat_id), "Подробнее. Деталей, цифр, примеров.", get_context(chat_id))
+        add_context(chat_id, "user", "Подробнее")
+        add_context(chat_id, "assistant", answer)
+        send_msg(chat_id, answer, reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
+
+    elif data == "act_rewrite":
+        answer_cb(cb_id)
+        send_typing(chat_id)
+        answer = call_ai(get_mode_prompt(chat_id), "Перепиши лучше.", get_context(chat_id))
+        add_context(chat_id, "user", "Переписать")
+        add_context(chat_id, "assistant", answer)
+        send_msg(chat_id, answer, reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
+
+    elif data == "act_list":
+        answer_cb(cb_id)
+        send_typing(chat_id)
+        answer = call_ai(get_mode_prompt(chat_id), "Оформи списком.", get_context(chat_id))
+        add_context(chat_id, "user", "Списком")
+        add_context(chat_id, "assistant", answer)
+        send_msg(chat_id, answer, reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
+
+    elif data == "act_example":
+        answer_cb(cb_id)
+        send_typing(chat_id)
+        answer = call_ai(get_mode_prompt(chat_id), "Пример с цифрами.", get_context(chat_id))
+        add_context(chat_id, "user", "Пример")
+        add_context(chat_id, "assistant", answer)
+        send_msg(chat_id, answer, reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
+
+    elif data == "act_image":
+        answer_cb(cb_id)
+        send_typing(chat_id)
+        prompt = call_ai(
+            "Ты генератор промтов для картинок. Отвечай ТОЛЬКО промтом без кавычек и пояснений.",
+            "Создай короткий промт на английском для генерации картинки по теме последнего сообщения. Только промт. Максимум 10 слов.",
+            get_context(chat_id)
+        )
+        prompt = prompt.strip().strip('"').strip("'").strip("`")[:200]
+        send_msg(chat_id, f"🎨 Генерирую: {prompt}\n⏳ Подожди 15-30 секунд...")
+        img_path = generate_image(prompt)
+        send_photo(chat_id, img_path, "🖼 " + prompt)
+
+    elif data == "act_voice":
+        answer_cb(cb_id)
+        send_typing(chat_id)
+        ctx = get_context(chat_id)
+        if ctx:
+            last_text = ctx[-1]["text"][:500]
+        else:
+            send_msg(chat_id, "❌ Нечего озвучивать. Сначала задай вопрос.")
+            return
+        send_msg(chat_id, "🎙 Создаю голосовое...")
+        voice_path = create_voice(last_text)
+        if voice_path:
+            send_voice(chat_id, voice_path)
+        else:
+            send_msg(chat_id, "❌ Не удалось создать голосовое.")
+
+    elif data == "act_fav":
+        answer_cb(cb_id, "Добавлено в избранное!")
+        ctx = get_context(chat_id)
+        if ctx:
+            add_favorite(chat_id, ctx[-1]["text"])
+
+    elif data == "act_note":
+        answer_cb(cb_id, "Сохранено в заметки!")
+        ctx = get_context(chat_id)
+        if ctx:
+            add_note(chat_id, ctx[-1]["text"])
+
+    elif data == "show_favs":
+        answer_cb(cb_id)
+        favs = get_favorites(chat_id)
+        if favs:
+            text = "📌 Избранное:\n\n"
+            for i, f in enumerate(favs[-10:], 1):
+                text += f"{i}. [{f['date']}]\n{f['text'][:200]}\n\n"
+            send_msg(chat_id, text, reply_kb=main_reply_kb())
+        else:
+            send_msg(chat_id, "📌 Избранное пусто.\n\nНажми '📌 В избранное' после ответа.", reply_kb=main_reply_kb())
+
+    elif data == "show_notes":
+        answer_cb(cb_id)
+        notes = get_notes(chat_id)
+        if notes:
+            text = "📝 Заметки:\n\n"
+            for i, n in enumerate(notes[-10:], 1):
+                text += f"{i}. [{n['date']}]\n{n['text'][:200]}\n\n"
+            send_msg(chat_id, text, reply_kb=main_reply_kb())
+        else:
+            send_msg(chat_id, "📝 Заметок нет.\n\nНажми '📝 В заметки' после ответа или /note текст", reply_kb=main_reply_kb())
+
+    elif data == "back_main":
+        answer_cb(cb_id)
+        mode = get_user(chat_id, "mode", DEFAULT_MODE)
+        send_msg(chat_id, "🤖 Jarvis 2.0 | " + MODES.get(mode, MODES[DEFAULT_MODE])["name"],
+                 reply_kb=main_reply_kb(), inline_kb=main_inline_kb())
+
+
+# ─── Обработчик текстовых сообщений ───
 
 def handle_message(chat_id, text):
     text = text.strip()
 
     # ── Меню ──
     if text in ["/start", "/menu", "🏠 Меню", "⬅️ Назад в меню"]:
-        send_msg(chat_id, "🤖 Jarvis AI Agent 2.0\n\nВыбери режим или напиши вопрос:", main_reply_kb())
+        send_msg(chat_id, "🤖 Jarvis AI Agent 2.0\n\nВыбери режим или напиши вопрос:",
+                 reply_kb=main_reply_kb(), inline_kb=main_inline_kb())
         return
 
-    # ── Заметка командой ──
     if text.startswith("/note "):
         note_text = text[6:].strip()
         if note_text:
             add_note(chat_id, note_text)
-            send_msg(chat_id, "📝 Заметка сохранена!", main_reply_kb())
+            send_msg(chat_id, "📝 Заметка сохранена!", reply_kb=main_reply_kb())
         return
 
-    # ── Статистика ──
     if text in ["/stats", "📊 Статистика"]:
         stats = get_stats(chat_id)
         msg = "📊 Статистика:\n\n"
@@ -506,22 +715,23 @@ def handle_message(chat_id, text):
         for m, count in stats.get("modes", {}).items():
             name = MODES.get(m, {"name": m})["name"]
             msg += f"  {name}: {count}\n"
-        send_msg(chat_id, msg, main_reply_kb())
+        send_msg(chat_id, msg, reply_kb=main_reply_kb())
         return
 
-    # ── Выбор режима ──
+    # ── Выбор режима (reply кнопка) ──
     if text in MODE_BUTTONS:
         mode_key = MODE_BUTTONS[text]
         set_user(chat_id, "mode", mode_key)
         set_user(chat_id, "context", [])
         set_user(chat_id, "waiting", "")
         m = MODES[mode_key]
-        send_msg(chat_id, m["emoji"] + " Режим: " + m["name"] + "\n\nЗадавай вопросы!", after_reply_kb())
+        send_msg(chat_id, m["emoji"] + " Режим: " + m["name"] + "\n\nЗадавай вопросы!",
+                 reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
         return
 
-    # ── Шаблоны ──
+    # ── Шаблоны (reply кнопки) ──
     if text == "📦 Шаблоны":
-        send_msg(chat_id, "📦 Выбери шаблон:", templates_reply_kb())
+        send_msg(chat_id, "📦 Выбери шаблон:", reply_kb=templates_reply_kb(), inline_kb=tpl_inline_kb())
         return
 
     if text in TEMPLATE_BUTTONS:
@@ -531,12 +741,12 @@ def handle_message(chat_id, text):
         answer = call_ai(get_mode_prompt(chat_id), TEMPLATES[key]["prompt"], get_context(chat_id))
         add_context(chat_id, "user", TEMPLATES[key]["prompt"])
         add_context(chat_id, "assistant", answer)
-        send_msg(chat_id, answer, after_reply_kb())
+        send_msg(chat_id, answer, reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
         return
 
-    # ── Инструменты ──
+    # ── Инструменты (reply кнопки) ──
     if text == "🛠 Инструменты":
-        send_msg(chat_id, "🛠 Выбери инструмент:", tools_reply_kb())
+        send_msg(chat_id, "🛠 Выбери инструмент:", reply_kb=tools_reply_kb(), inline_kb=tools_inline_kb())
         return
 
     if text == "🔍 Поиск":
@@ -576,40 +786,39 @@ def handle_message(chat_id, text):
 
     if text == "🗑 Очистить контекст":
         set_user(chat_id, "context", [])
-        send_msg(chat_id, "🗑 Контекст очищен!", main_reply_kb())
+        send_msg(chat_id, "🗑 Контекст очищен!", reply_kb=main_reply_kb())
         return
 
-    # ── Избранное ──
+    # ── Избранное / Заметки (reply кнопки) ──
     if text == "📌 Избранное":
         favs = get_favorites(chat_id)
         if favs:
             msg = "📌 Избранное:\n\n"
             for i, f in enumerate(favs[-10:], 1):
                 msg += f"{i}. [{f['date']}]\n{f['text'][:200]}\n\n"
-            send_msg(chat_id, msg, main_reply_kb())
+            send_msg(chat_id, msg, reply_kb=main_reply_kb())
         else:
-            send_msg(chat_id, "📌 Избранное пусто.\n\nНажми '📌 В избранное' после ответа.", main_reply_kb())
+            send_msg(chat_id, "📌 Избранное пусто.", reply_kb=main_reply_kb())
         return
 
-    # ── Заметки ──
     if text == "📝 Заметки":
         notes = get_notes(chat_id)
         if notes:
             msg = "📝 Заметки:\n\n"
             for i, n in enumerate(notes[-10:], 1):
                 msg += f"{i}. [{n['date']}]\n{n['text'][:200]}\n\n"
-            send_msg(chat_id, msg, main_reply_kb())
+            send_msg(chat_id, msg, reply_kb=main_reply_kb())
         else:
-            send_msg(chat_id, "📝 Заметок нет.\n\nНажми '📝 В заметки' после ответа или /note текст", main_reply_kb())
+            send_msg(chat_id, "📝 Заметок нет. Используй /note текст", reply_kb=main_reply_kb())
         return
 
-    # ── Действия после ответа ──
+    # ── Действия после ответа (reply кнопки) ──
     if text == "🔄 Подробнее":
         send_typing(chat_id)
         answer = call_ai(get_mode_prompt(chat_id), "Подробнее. Деталей, цифр, примеров.", get_context(chat_id))
         add_context(chat_id, "user", "Подробнее")
         add_context(chat_id, "assistant", answer)
-        send_msg(chat_id, answer, after_reply_kb())
+        send_msg(chat_id, answer, reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
         return
 
     if text == "✏️ Переписать":
@@ -617,7 +826,7 @@ def handle_message(chat_id, text):
         answer = call_ai(get_mode_prompt(chat_id), "Перепиши лучше.", get_context(chat_id))
         add_context(chat_id, "user", "Переписать")
         add_context(chat_id, "assistant", answer)
-        send_msg(chat_id, answer, after_reply_kb())
+        send_msg(chat_id, answer, reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
         return
 
     if text == "📋 Список":
@@ -625,7 +834,7 @@ def handle_message(chat_id, text):
         answer = call_ai(get_mode_prompt(chat_id), "Оформи списком.", get_context(chat_id))
         add_context(chat_id, "user", "Списком")
         add_context(chat_id, "assistant", answer)
-        send_msg(chat_id, answer, after_reply_kb())
+        send_msg(chat_id, answer, reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
         return
 
     if text == "🎯 Пример":
@@ -633,7 +842,7 @@ def handle_message(chat_id, text):
         answer = call_ai(get_mode_prompt(chat_id), "Пример с цифрами.", get_context(chat_id))
         add_context(chat_id, "user", "Пример")
         add_context(chat_id, "assistant", answer)
-        send_msg(chat_id, answer, after_reply_kb())
+        send_msg(chat_id, answer, reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
         return
 
     if text == "🖼 Нарисовать":
@@ -655,32 +864,32 @@ def handle_message(chat_id, text):
         if ctx:
             last_text = ctx[-1]["text"][:500]
         else:
-            send_msg(chat_id, "❌ Нечего озвучивать. Сначала задай вопрос.", after_reply_kb())
+            send_msg(chat_id, "❌ Нечего озвучивать.", reply_kb=after_reply_kb())
             return
         send_msg(chat_id, "🎙 Создаю голосовое...")
         voice_path = create_voice(last_text)
         if voice_path:
             send_voice(chat_id, voice_path)
         else:
-            send_msg(chat_id, "❌ Не удалось создать голосовое.", after_reply_kb())
+            send_msg(chat_id, "❌ Не удалось создать голосовое.", reply_kb=after_reply_kb())
         return
 
     if text == "📌 В избранное":
         ctx = get_context(chat_id)
         if ctx:
             add_favorite(chat_id, ctx[-1]["text"])
-            send_msg(chat_id, "📌 Добавлено в избранное!", after_reply_kb())
+            send_msg(chat_id, "📌 Добавлено в избранное!", reply_kb=after_reply_kb())
         else:
-            send_msg(chat_id, "❌ Нечего сохранять.", after_reply_kb())
+            send_msg(chat_id, "❌ Нечего сохранять.", reply_kb=after_reply_kb())
         return
 
     if text == "📝 В заметки":
         ctx = get_context(chat_id)
         if ctx:
             add_note(chat_id, ctx[-1]["text"])
-            send_msg(chat_id, "📝 Сохранено в заметки!", after_reply_kb())
+            send_msg(chat_id, "📝 Сохранено в заметки!", reply_kb=after_reply_kb())
         else:
-            send_msg(chat_id, "❌ Нечего сохранять.", after_reply_kb())
+            send_msg(chat_id, "❌ Нечего сохранять.", reply_kb=after_reply_kb())
         return
 
     # ── Waiting-состояния ──
@@ -694,7 +903,7 @@ def handle_message(chat_id, text):
         answer = call_ai(get_mode_prompt(chat_id), "Поиск '" + text + "':\n\n" + results + "\n\nАнализ.", get_context(chat_id))
         add_context(chat_id, "user", "Поиск: " + text)
         add_context(chat_id, "assistant", answer)
-        send_msg(chat_id, "🔍 " + text + "\n\n" + answer, after_reply_kb())
+        send_msg(chat_id, "🔍 " + text + "\n\n" + answer, reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
         return
 
     if waiting == "parse":
@@ -705,7 +914,7 @@ def handle_message(chat_id, text):
         answer = call_ai(get_mode_prompt(chat_id), "Сайт " + text + ":\n\n" + content + "\n\nАнализ.", get_context(chat_id))
         add_context(chat_id, "user", "Парсинг: " + text)
         add_context(chat_id, "assistant", answer)
-        send_msg(chat_id, "🌐\n\n" + answer, after_reply_kb())
+        send_msg(chat_id, "🌐\n\n" + answer, reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
         return
 
     if waiting == "image":
@@ -724,7 +933,7 @@ def handle_message(chat_id, text):
         if voice_path:
             send_voice(chat_id, voice_path)
         else:
-            send_msg(chat_id, "❌ Не удалось озвучить.", after_reply_kb())
+            send_msg(chat_id, "❌ Не удалось озвучить.", reply_kb=after_reply_kb())
         return
 
     if waiting == "summarize":
@@ -734,27 +943,27 @@ def handle_message(chat_id, text):
         answer = call_ai("Суммаризатор.", "5 главных мыслей:\n\n" + text[:3000], [])
         add_context(chat_id, "user", "Суммаризация")
         add_context(chat_id, "assistant", answer)
-        send_msg(chat_id, "📝\n\n" + answer, after_reply_kb())
+        send_msg(chat_id, "📝\n\n" + answer, reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
         return
 
     if waiting == "enru":
         set_user(chat_id, "waiting", "")
         send_typing(chat_id)
         answer = call_ai("Переводчик.", "Переведи на русский:\n\n" + text, [])
-        send_msg(chat_id, "🇬🇧→🇷🇺\n\n" + answer, after_reply_kb())
+        send_msg(chat_id, "🇬🇧→🇷🇺\n\n" + answer, reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
         return
 
     if waiting == "ruen":
         set_user(chat_id, "waiting", "")
         send_typing(chat_id)
         answer = call_ai("Переводчик.", "Переведи на английский:\n\n" + text, [])
-        send_msg(chat_id, "🇷🇺→🇬🇧\n\n" + answer, after_reply_kb())
+        send_msg(chat_id, "🇷🇺→🇬🇧\n\n" + answer, reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
         return
 
     if waiting == "newnote":
         set_user(chat_id, "waiting", "")
         add_note(chat_id, text)
-        send_msg(chat_id, "📝 Заметка сохранена!", main_reply_kb())
+        send_msg(chat_id, "📝 Заметка сохранена!", reply_kb=main_reply_kb())
         return
 
     # ── Обычное сообщение → AI ──
@@ -763,7 +972,7 @@ def handle_message(chat_id, text):
     answer = call_ai(get_mode_prompt(chat_id), text, get_context(chat_id))
     add_context(chat_id, "user", text)
     add_context(chat_id, "assistant", answer)
-    send_msg(chat_id, answer, after_reply_kb())
+    send_msg(chat_id, answer, reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
 
 
 # ─── Flask ───
@@ -771,6 +980,13 @@ def handle_message(chat_id, text):
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.get_json()
+
+    if "callback_query" in data:
+        try:
+            handle_callback(data["callback_query"])
+        except Exception as e:
+            print("CB error:", e)
+        return "ok"
 
     message = data.get("message", {})
     chat_id = message.get("chat", {}).get("id")
