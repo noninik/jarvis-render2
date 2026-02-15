@@ -8,6 +8,8 @@ import subprocess
 import asyncio
 import urllib.parse
 import uuid
+from datetime import datetime
+from pathlib import Path
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
@@ -18,6 +20,11 @@ RENDER_URL = os.getenv("RENDER_URL", "")
 app = Flask(__name__)
 user_data = {}
 
+# === ПАПКА ДЛЯ ДАННЫХ ===
+DATA_DIR = Path("data")
+DATA_DIR.mkdir(exist_ok=True)
+
+# === РЕЖИМЫ ===
 MODES = {
     "helper": {"name": "💬 Помощник", "prompt": "Ты универсальный AI-помощник Jarvis. Отвечай кратко и по делу на русском. Конкретные ответы с примерами.", "emoji": "💬"},
     "business": {"name": "📊 Бизнес-аналитик", "prompt": "Ты бизнес-аналитик Jarvis. Анализируй рынки, конкурентов, тренды. Структурированные ответы с цифрами. На русском.", "emoji": "📊"},
@@ -32,6 +39,38 @@ MODES = {
 }
 
 DEFAULT_MODE = "helper"
+
+JARVIS_SYSTEM_PROMPT = """Ты — JARVIS 2.0, продвинутый командный центр для серийного предпринимателя.
+
+ТВОИ РОЛИ:
+1. РЫНОЧНЫЙ АНАЛИТИК — Анализируешь боли людей, ищешь прибыльные ниши, оцениваешь конкурентов
+2. СТРАТЕГ — Декомпозируешь идеи на спринты (недельные отрезки), создаёшь бизнес-планы
+3. МОТИВАТОР — Поддерживаешь пользователя, геймифицируешь процесс
+
+ПРАВИЛА:
+- Отвечай конкретно, без воды
+- Структура: проблема → решение → следующий шаг
+- Для ниш: потенциал, конкуренция, время до MVP, монетизация
+- Для планов: недельные спринты с чек-листами
+- Отвечай на русском
+- Используй эмодзи умеренно
+
+ФОРМАТ БИЗНЕС-ОЦЕНКИ:
+📊 Ниша: [название]
+🎯 ЦА: [кто]
+💰 Монетизация: [как]
+⚡ Конкуренция: [низкая/средняя/высокая]
+🕐 MVP: [сколько]
+📈 TAM: [оценка]
+✅ Вердикт: [стоит/нет + почему]
+
+ФОРМАТ СПРИНТА:
+🏃 Спринт [N] — Неделя [N]
+Цель: [что сделать]
+□ Задача 1
+□ Задача 2
+□ Задача 3
+Критерий: [как понять что готово]"""
 
 TEMPLATES = {
     "biz_plan": {"name": "📋 Бизнес-план", "prompt": "Создай детальный бизнес-план. Спроси нишу и бюджет, потом создай план: идея, ЦА, конкуренты, MVP, монетизация, маркетинг, финансы, риски."},
@@ -58,6 +97,67 @@ TEMPLATE_BUTTONS = {
     "📧 Email-цепочка": "email_chain", "📊 SWOT-анализ": "swot",
 }
 
+
+# ============================================================
+# УТИЛИТЫ JSON
+# ============================================================
+
+def read_json(filename, default=None):
+    if default is None:
+        default = {}
+    filepath = DATA_DIR / filename
+    try:
+        with open(filepath, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        write_json(filename, default)
+        return default
+
+
+def write_json(filename, data):
+    filepath = DATA_DIR / filename
+    with open(filepath, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+# ============================================================
+# ГЕЙМИФИКАЦИЯ
+# ============================================================
+
+def get_player():
+    return read_json("player.json", {
+        "level": 1,
+        "xp": 0,
+        "xp_to_next": 1000,
+        "rank": "Новичок",
+        "total_projects": 0,
+        "completed_quests": 0,
+        "streak": 0
+    })
+
+
+def add_xp(amount, reason=""):
+    ranks = [
+        "Новичок", "Стажёр", "Предприниматель", "Бизнесмен",
+        "Стратег", "Магнат", "Титан", "Легенда"
+    ]
+    player = get_player()
+    player["xp"] += amount
+    leveled = False
+    while player["xp"] >= player["xp_to_next"]:
+        player["xp"] -= player["xp_to_next"]
+        player["level"] += 1
+        player["xp_to_next"] = int(player["xp_to_next"] * 1.3)
+        rank_idx = min(player["level"] // 5, len(ranks) - 1)
+        player["rank"] = ranks[rank_idx]
+        leveled = True
+    write_json("player.json", player)
+    return player, leveled
+
+
+# ============================================================
+# TELEGRAM USER DATA
+# ============================================================
 
 def get_user(chat_id, key, default=""):
     uid = str(chat_id)
@@ -128,10 +228,15 @@ def update_stats(chat_id):
     set_user(chat_id, "stats", stats)
 
 
+# ============================================================
+# ИНСТРУМЕНТЫ
+# ============================================================
+
 def search_web(query):
     try:
         from bs4 import BeautifulSoup
-        resp = requests.get("https://html.duckduckgo.com/html/", params={"q": query}, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+        resp = requests.get("https://html.duckduckgo.com/html/", params={"q": query},
+                            headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
         soup = BeautifulSoup(resp.text, "html.parser")
         results = []
         for r in soup.select(".result__body")[:5]:
@@ -165,7 +270,8 @@ def generate_image(prompt):
     ]
     for url in urls:
         try:
-            resp = requests.get(url, timeout=120, stream=True, allow_redirects=True, headers={"User-Agent": "Mozilla/5.0"})
+            resp = requests.get(url, timeout=120, stream=True, allow_redirects=True,
+                                headers={"User-Agent": "Mozilla/5.0"})
             content_type = resp.headers.get("content-type", "")
             if resp.status_code == 200 and "image" in content_type:
                 with open(file_path, "wb") as f:
@@ -203,7 +309,10 @@ def create_voice(text):
             loop.close()
         if os.path.exists(mp3_path) and os.path.getsize(mp3_path) > 100:
             try:
-                result = subprocess.run(["ffmpeg", "-y", "-i", mp3_path, "-c:a", "libopus", "-b:a", "64k", ogg_path], timeout=30, capture_output=True)
+                result = subprocess.run(
+                    ["ffmpeg", "-y", "-i", mp3_path, "-c:a", "libopus", "-b:a", "64k", ogg_path],
+                    timeout=30, capture_output=True
+                )
                 if result.returncode == 0 and os.path.exists(ogg_path) and os.path.getsize(ogg_path) > 100:
                     os.remove(mp3_path)
                     return ogg_path
@@ -229,6 +338,10 @@ def create_voice(text):
     return None
 
 
+# ============================================================
+# AI ВЫЗОВ (Groq)
+# ============================================================
+
 def call_ai(system_prompt, user_message, context):
     messages = [{"role": "system", "content": system_prompt}]
     for msg in context[-10:]:
@@ -240,8 +353,10 @@ def call_ai(system_prompt, user_message, context):
             "Authorization": "Bearer " + GROQ_API_KEY,
             "Content-Type": "application/json",
         }, json={
-            "model": GROQ_MODEL, "messages": messages,
-            "temperature": 0.9, "max_tokens": 3000,
+            "model": GROQ_MODEL,
+            "messages": messages,
+            "temperature": 0.9,
+            "max_tokens": 3000,
         }, timeout=60)
         if resp.status_code != 200:
             return "AI временно недоступен."
@@ -250,7 +365,9 @@ def call_ai(system_prompt, user_message, context):
         return "Ошибка соединения с AI."
 
 
-# ─── Telegram API ───
+# ============================================================
+# TELEGRAM API
+# ============================================================
 
 def send_msg(chat_id, text, reply_kb=None, inline_kb=None):
     url = "https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendMessage"
@@ -317,9 +434,11 @@ def send_photo(chat_id, file_path, caption=""):
     try:
         if file_path and os.path.exists(file_path):
             with open(file_path, "rb") as f:
-                resp = requests.post("https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendPhoto",
+                resp = requests.post(
+                    "https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendPhoto",
                     data={"chat_id": chat_id, "caption": caption[:1000]},
-                    files={"photo": ("image.jpg", f, "image/jpeg")}, timeout=60)
+                    files={"photo": ("image.jpg", f, "image/jpeg")}, timeout=60
+                )
                 if resp.status_code == 200:
                     return
         send_msg(chat_id, "❌ Не удалось сгенерировать картинку.")
@@ -338,13 +457,11 @@ def send_voice(chat_id, file_path):
         if file_path and os.path.exists(file_path):
             with open(file_path, "rb") as f:
                 if file_path.endswith(".ogg"):
-                    resp = requests.post("https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendVoice",
-                        data={"chat_id": chat_id}, files={"voice": f}, timeout=30)
+                    requests.post("https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendVoice",
+                                  data={"chat_id": chat_id}, files={"voice": f}, timeout=30)
                 else:
-                    resp = requests.post("https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendAudio",
-                        data={"chat_id": chat_id, "title": "Озвучка"}, files={"audio": f}, timeout=30)
-                if resp.status_code != 200:
-                    send_msg(chat_id, "❌ Не удалось отправить голосовое.")
+                    requests.post("https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendAudio",
+                                  data={"chat_id": chat_id, "title": "Озвучка"}, files={"audio": f}, timeout=30)
         else:
             send_msg(chat_id, "❌ Не удалось создать голосовое.")
     except:
@@ -373,7 +490,9 @@ def answer_cb(callback_id, text=""):
         pass
 
 
-# ─── Reply клавиатуры (внизу) ───
+# ============================================================
+# TELEGRAM КЛАВИАТУРЫ
+# ============================================================
 
 def main_reply_kb():
     return {"keyboard": [
@@ -416,8 +535,6 @@ def after_reply_kb():
         ["🏠 Меню"],
     ], "resize_keyboard": True}
 
-
-# ─── Inline клавиатуры (в сообщениях) ───
 
 def main_inline_kb():
     return {"inline_keyboard": [
@@ -466,7 +583,9 @@ def after_inline_kb():
     ]}
 
 
-# ─── Callback (inline кнопки) ───
+# ============================================================
+# TELEGRAM CALLBACK HANDLER
+# ============================================================
 
 def handle_callback(cb):
     chat_id = cb["message"]["chat"]["id"]
@@ -596,7 +715,9 @@ def handle_callback(cb):
         answer_cb(cb_id)
         delete_msg(chat_id, old_msg_id)
         send_typing(chat_id)
-        prompt = call_ai("Отвечай ТОЛЬКО промтом без кавычек.", "Короткий промт на английском для картинки по теме последнего сообщения. Максимум 10 слов.", get_context(chat_id))
+        prompt = call_ai("Отвечай ТОЛЬКО промтом без кавычек.",
+                         "Короткий промт на английском для картинки по теме последнего сообщения. Максимум 10 слов.",
+                         get_context(chat_id))
         prompt = prompt.strip().strip('"').strip("'").strip("`")[:200]
         send_msg(chat_id, f"🎨 Генерирую: {prompt}\n⏳ Подожди...")
         img_path = generate_image(prompt)
@@ -654,11 +775,14 @@ def handle_callback(cb):
     elif data == "back_main":
         answer_cb(cb_id)
         mode = get_user(chat_id, "mode", DEFAULT_MODE)
-        edit_msg(chat_id, old_msg_id, "🤖 Jarvis 2.0 | " + MODES.get(mode, MODES[DEFAULT_MODE])["name"], main_inline_kb())
+        edit_msg(chat_id, old_msg_id, "🤖 Jarvis 2.0 | " + MODES.get(mode, MODES[DEFAULT_MODE])["name"],
+                 main_inline_kb())
         send_reply_kb(chat_id, main_reply_kb())
 
 
-# ─── Обработчик текста ───
+# ============================================================
+# TELEGRAM MESSAGE HANDLER
+# ============================================================
 
 def handle_message(chat_id, text):
     text = text.strip()
@@ -712,33 +836,19 @@ def handle_message(chat_id, text):
         return
 
     if text == "🔍 Поиск":
-        set_user(chat_id, "waiting", "search")
-        send_msg(chat_id, "🔍 Запрос:")
-        return
+        set_user(chat_id, "waiting", "search"); send_msg(chat_id, "🔍 Запрос:"); return
     if text == "🌐 Парсинг сайта":
-        set_user(chat_id, "waiting", "parse")
-        send_msg(chat_id, "🌐 Ссылка:")
-        return
+        set_user(chat_id, "waiting", "parse"); send_msg(chat_id, "🌐 Ссылка:"); return
     if text == "🖼 Генерация фото":
-        set_user(chat_id, "waiting", "image")
-        send_msg(chat_id, "🖼 Опиши:")
-        return
+        set_user(chat_id, "waiting", "image"); send_msg(chat_id, "🖼 Опиши:"); return
     if text == "🎙 Озвучка текста":
-        set_user(chat_id, "waiting", "voice")
-        send_msg(chat_id, "🎙 Текст:")
-        return
+        set_user(chat_id, "waiting", "voice"); send_msg(chat_id, "🎙 Текст:"); return
     if text == "📝 Суммаризация":
-        set_user(chat_id, "waiting", "summarize")
-        send_msg(chat_id, "📝 Текст:")
-        return
+        set_user(chat_id, "waiting", "summarize"); send_msg(chat_id, "📝 Текст:"); return
     if text == "🇬🇧→🇷🇺 Перевод EN-RU":
-        set_user(chat_id, "waiting", "enru")
-        send_msg(chat_id, "🇬🇧→🇷🇺 Текст:")
-        return
+        set_user(chat_id, "waiting", "enru"); send_msg(chat_id, "🇬🇧→🇷🇺 Текст:"); return
     if text == "🇷🇺→🇬🇧 Перевод RU-EN":
-        set_user(chat_id, "waiting", "ruen")
-        send_msg(chat_id, "🇷🇺→🇬🇧 Текст:")
-        return
+        set_user(chat_id, "waiting", "ruen"); send_msg(chat_id, "🇷🇺→🇬🇧 Текст:"); return
     if text == "🗑 Очистить контекст":
         set_user(chat_id, "context", [])
         send_msg(chat_id, "🗑 Очищено!", reply_kb=main_reply_kb())
@@ -773,6 +883,7 @@ def handle_message(chat_id, text):
         add_context(chat_id, "assistant", answer)
         send_msg(chat_id, answer, inline_kb=after_inline_kb())
         return
+
     if text == "✏️ Переписать":
         send_typing(chat_id)
         answer = call_ai(get_mode_prompt(chat_id), "Перепиши лучше.", get_context(chat_id))
@@ -780,6 +891,7 @@ def handle_message(chat_id, text):
         add_context(chat_id, "assistant", answer)
         send_msg(chat_id, answer, inline_kb=after_inline_kb())
         return
+
     if text == "📋 Список":
         send_typing(chat_id)
         answer = call_ai(get_mode_prompt(chat_id), "Оформи списком.", get_context(chat_id))
@@ -787,6 +899,7 @@ def handle_message(chat_id, text):
         add_context(chat_id, "assistant", answer)
         send_msg(chat_id, answer, inline_kb=after_inline_kb())
         return
+
     if text == "🎯 Пример":
         send_typing(chat_id)
         answer = call_ai(get_mode_prompt(chat_id), "Пример с цифрами.", get_context(chat_id))
@@ -797,7 +910,8 @@ def handle_message(chat_id, text):
 
     if text == "🖼 Нарисовать":
         send_typing(chat_id)
-        prompt = call_ai("Отвечай ТОЛЬКО промтом.", "Короткий промт на английском для картинки. 10 слов макс.", get_context(chat_id))
+        prompt = call_ai("Отвечай ТОЛЬКО промтом.", "Короткий промт на английском для картинки. 10 слов макс.",
+                         get_context(chat_id))
         prompt = prompt.strip().strip('"').strip("'").strip("`")[:200]
         send_msg(chat_id, f"🎨 {prompt}\n⏳ Подожди...")
         img_path = generate_image(prompt)
@@ -808,8 +922,7 @@ def handle_message(chat_id, text):
         send_typing(chat_id)
         ctx = get_context(chat_id)
         if not ctx:
-            send_msg(chat_id, "❌ Нечего озвучивать.")
-            return
+            send_msg(chat_id, "❌ Нечего озвучивать."); return
         send_msg(chat_id, "🎙 Создаю...")
         voice_path = create_voice(ctx[-1]["text"][:500])
         if voice_path:
@@ -821,8 +934,7 @@ def handle_message(chat_id, text):
     if text == "📌 В избранное":
         ctx = get_context(chat_id)
         if ctx:
-            add_favorite(chat_id, ctx[-1]["text"])
-            send_msg(chat_id, "📌 Добавлено!")
+            add_favorite(chat_id, ctx[-1]["text"]); send_msg(chat_id, "📌 Добавлено!")
         else:
             send_msg(chat_id, "❌ Пусто.")
         return
@@ -830,13 +942,12 @@ def handle_message(chat_id, text):
     if text == "📝 В заметки":
         ctx = get_context(chat_id)
         if ctx:
-            add_note(chat_id, ctx[-1]["text"])
-            send_msg(chat_id, "📝 Сохранено!")
+            add_note(chat_id, ctx[-1]["text"]); send_msg(chat_id, "📝 Сохранено!")
         else:
             send_msg(chat_id, "❌ Пусто.")
         return
 
-    # Waiting
+    # === WAITING STATES ===
     waiting = get_user(chat_id, "waiting", "")
 
     if waiting == "search":
@@ -844,7 +955,8 @@ def handle_message(chat_id, text):
         send_typing(chat_id)
         update_stats(chat_id)
         results = search_web(text)
-        answer = call_ai(get_mode_prompt(chat_id), "Поиск '" + text + "':\n\n" + results + "\n\nАнализ.", get_context(chat_id))
+        answer = call_ai(get_mode_prompt(chat_id),
+                         "Поиск '" + text + "':\n\n" + results + "\n\nАнализ.", get_context(chat_id))
         add_context(chat_id, "user", "Поиск: " + text)
         add_context(chat_id, "assistant", answer)
         send_msg(chat_id, "🔍 " + text + "\n\n" + answer, reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
@@ -855,7 +967,8 @@ def handle_message(chat_id, text):
         send_typing(chat_id)
         update_stats(chat_id)
         content = parse_website(text)
-        answer = call_ai(get_mode_prompt(chat_id), "Сайт " + text + ":\n\n" + content + "\n\nАнализ.", get_context(chat_id))
+        answer = call_ai(get_mode_prompt(chat_id),
+                         "Сайт " + text + ":\n\n" + content + "\n\nАнализ.", get_context(chat_id))
         add_context(chat_id, "user", "Парсинг: " + text)
         add_context(chat_id, "assistant", answer)
         send_msg(chat_id, "🌐\n\n" + answer, reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
@@ -910,16 +1023,19 @@ def handle_message(chat_id, text):
         send_msg(chat_id, "📝 Сохранено!")
         return
 
-    # AI
+    # === DEFAULT: AI CHAT ===
     send_typing(chat_id)
     update_stats(chat_id)
     answer = call_ai(get_mode_prompt(chat_id), text, get_context(chat_id))
     add_context(chat_id, "user", text)
     add_context(chat_id, "assistant", answer)
+    add_xp(25, f"Чат: {text[:50]}")
     send_msg(chat_id, answer, reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
 
 
-# ─── Flask routes ───
+# ============================================================
+# FLASK ROUTES — TELEGRAM WEBHOOK
+# ============================================================
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
@@ -947,18 +1063,23 @@ def home():
     return "Jarvis 2.0 is running!"
 
 
-# ─── Веб-версия Jarvis ───
+# ============================================================
+# WEB API — ЧАТ, ПРОЕКТЫ, КВЕСТЫ, ГЕЙМИФИКАЦИЯ
+# ============================================================
 
 web_sessions = {}
+
 
 def get_web_session(sid):
     if sid not in web_sessions:
         web_sessions[sid] = {"mode": "helper", "context": []}
     return web_sessions[sid]
 
+
 @app.route("/chat")
 def web_chat():
     return render_template("index.html")
+
 
 @app.route("/api/send", methods=["POST"])
 def api_send():
@@ -967,17 +1088,26 @@ def api_send():
     text = data.get("text", "").strip()
     if not sid or not text:
         return json.dumps({"error": "empty"}), 400, {"Content-Type": "application/json"}
+
     session = get_web_session(sid)
     mode = session["mode"]
     prompt = MODES.get(mode, MODES["helper"])["prompt"]
+
     session["context"].append({"role": "user", "text": text[:1000]})
     if len(session["context"]) > 20:
         session["context"] = session["context"][-20:]
+
     answer = call_ai(prompt, text, session["context"])
+
     session["context"].append({"role": "assistant", "text": answer[:1000]})
     if len(session["context"]) > 20:
         session["context"] = session["context"][-20:]
-    return json.dumps({"answer": answer, "time": time.strftime("%H:%M")}, ensure_ascii=False), 200, {"Content-Type": "application/json"}
+
+    add_xp(25, f"Web: {text[:50]}")
+
+    return json.dumps({"answer": answer, "time": time.strftime("%H:%M")}, ensure_ascii=False), 200, {
+        "Content-Type": "application/json"}
+
 
 @app.route("/api/mode", methods=["POST"])
 def api_mode():
@@ -988,8 +1118,10 @@ def api_mode():
         session = get_web_session(sid)
         session["mode"] = mode
         session["context"] = []
-        return json.dumps({"ok": True}), 200, {"Content-Type": "application/json"}
+        return json.dumps({"ok": True, "mode": MODES[mode]}, ensure_ascii=False), 200, {
+            "Content-Type": "application/json"}
     return json.dumps({"error": "invalid"}), 400, {"Content-Type": "application/json"}
+
 
 @app.route("/api/clear", methods=["POST"])
 def api_clear():
@@ -1000,13 +1132,206 @@ def api_clear():
     return json.dumps({"ok": True}), 200, {"Content-Type": "application/json"}
 
 
-# ─── Запуск ───
+# === ПРОЕКТЫ ===
+
+@app.route("/api/projects", methods=["GET"])
+def get_projects():
+    data = read_json("projects.json", {"projects": []})
+    return json.dumps(data, ensure_ascii=False), 200, {"Content-Type": "application/json"}
+
+
+@app.route("/api/projects", methods=["POST"])
+def create_project():
+    data = read_json("projects.json", {"projects": []})
+    req = request.get_json()
+    new_project = {
+        "id": str(int(time.time() * 1000)),
+        "name": req.get("name", "Без названия"),
+        "description": req.get("description", ""),
+        "monetization": req.get("monetization", ""),
+        "status": "active",
+        "sprint": 1,
+        "revenue": 0,
+        "created_at": datetime.now().isoformat()
+    }
+    data["projects"].append(new_project)
+    write_json("projects.json", data)
+    add_xp(100, f"Новый проект: {new_project['name']}")
+    return json.dumps(new_project, ensure_ascii=False), 200, {"Content-Type": "application/json"}
+
+
+@app.route("/api/projects/<project_id>", methods=["PUT"])
+def update_project(project_id):
+    data = read_json("projects.json", {"projects": []})
+    req = request.get_json()
+    for i, p in enumerate(data["projects"]):
+        if p["id"] == project_id:
+            data["projects"][i].update(req)
+            write_json("projects.json", data)
+            return json.dumps(data["projects"][i], ensure_ascii=False), 200, {"Content-Type": "application/json"}
+    return json.dumps({"error": "Не найден"}), 404, {"Content-Type": "application/json"}
+
+
+@app.route("/api/projects/<project_id>", methods=["DELETE"])
+def delete_project(project_id):
+    data = read_json("projects.json", {"projects": []})
+    data["projects"] = [p for p in data["projects"] if p["id"] != project_id]
+    write_json("projects.json", data)
+    return json.dumps({"ok": True}), 200, {"Content-Type": "application/json"}
+
+
+# === КВЕСТЫ ===
+
+@app.route("/api/quests", methods=["GET"])
+def get_quests():
+    return json.dumps(read_json("quests.json", {"quests": []}), ensure_ascii=False), 200, {
+        "Content-Type": "application/json"}
+
+
+@app.route("/api/quests", methods=["POST"])
+def create_quest():
+    data = read_json("quests.json", {"quests": []})
+    req = request.get_json()
+    quest = {
+        "id": str(int(time.time() * 1000)),
+        "name": req.get("name", ""),
+        "priority": req.get("priority", "normal"),
+        "xp_reward": req.get("xp_reward", 100),
+        "tasks": req.get("tasks", []),
+        "completed": False,
+        "created_at": datetime.now().isoformat()
+    }
+    data["quests"].append(quest)
+    write_json("quests.json", data)
+    return json.dumps(quest, ensure_ascii=False), 200, {"Content-Type": "application/json"}
+
+
+@app.route("/api/quests/<quest_id>", methods=["PUT"])
+def update_quest(quest_id):
+    data = read_json("quests.json", {"quests": []})
+    req = request.get_json()
+    for i, q in enumerate(data["quests"]):
+        if q["id"] == quest_id:
+            data["quests"][i].update(req)
+            if req.get("completed"):
+                add_xp(q.get("xp_reward", 100), f"Квест: {q['name']}")
+            write_json("quests.json", data)
+            return json.dumps(data["quests"][i], ensure_ascii=False), 200, {"Content-Type": "application/json"}
+    return json.dumps({"error": "Не найден"}), 404, {"Content-Type": "application/json"}
+
+
+# === ИГРОК ===
+
+@app.route("/api/player", methods=["GET"])
+def get_player_route():
+    return json.dumps(get_player(), ensure_ascii=False), 200, {"Content-Type": "application/json"}
+
+
+@app.route("/api/player/add-xp", methods=["POST"])
+def add_xp_route():
+    req = request.get_json()
+    amount = req.get("amount", 0)
+    reason = req.get("reason", "")
+    player, leveled = add_xp(amount, reason)
+    return json.dumps({"player": player, "leveled": leveled}, ensure_ascii=False), 200, {
+        "Content-Type": "application/json"}
+
+
+# === АНАЛИЗ НИШИ ===
+
+@app.route("/api/analyze-niche", methods=["POST"])
+def analyze_niche():
+    try:
+        req = request.get_json()
+        niche = req.get("niche", "")
+        description = req.get("description", "")
+
+        prompt = f"""Проанализируй бизнес-нишу и дай структурированную оценку.
+
+Ниша: {niche}
+Описание: {description or 'Нет описания'}
+
+Дай оценку в формате БИЗНЕС-ОЦЕНКИ.
+Также добавь:
+- 3 главных риска
+- 3 конкурента
+- Стратегию входа
+- План на 4 недели (4 спринта)"""
+
+        answer = call_ai(JARVIS_SYSTEM_PROMPT, prompt, [])
+        add_xp(50, f"Анализ ниши: {niche}")
+
+        return json.dumps({"analysis": answer, "timestamp": datetime.now().isoformat()},
+                          ensure_ascii=False), 200, {"Content-Type": "application/json"}
+    except Exception as e:
+        return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
+
+
+# === ГЕНЕРАЦИЯ СПРИНТОВ ===
+
+@app.route("/api/generate-sprints", methods=["POST"])
+def generate_sprints():
+    try:
+        req = request.get_json()
+        project = req.get("project", "")
+        weeks = req.get("weeks", 4)
+
+        prompt = f"""Разбей проект на {weeks} недельных спринтов.
+
+Проект: {project}
+
+Для каждого спринта:
+1. Цель (одно предложение)
+2. 4-6 задач (чек-лист)
+3. Критерий готовности
+4. Ожидаемый результат"""
+
+        answer = call_ai(JARVIS_SYSTEM_PROMPT, prompt, [])
+
+        return json.dumps({"sprints": answer, "timestamp": datetime.now().isoformat()},
+                          ensure_ascii=False), 200, {"Content-Type": "application/json"}
+    except Exception as e:
+        return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
+
+
+# === СТАТИСТИКА ===
+
+@app.route("/api/stats", methods=["GET"])
+def get_stats_route():
+    projects = read_json("projects.json", {"projects": []})
+    quests = read_json("quests.json", {"quests": []})
+    player = get_player()
+
+    active = [p for p in projects["projects"] if p.get("status") == "active"]
+    total_rev = sum(p.get("revenue", 0) for p in projects["projects"])
+
+    return json.dumps({
+        "active_projects": len(active),
+        "total_projects": len(projects["projects"]),
+        "total_revenue": total_rev,
+        "active_quests": len([q for q in quests["quests"] if not q.get("completed")]),
+        "completed_quests": len([q for q in quests["quests"] if q.get("completed")]),
+        "player": player
+    }, ensure_ascii=False), 200, {"Content-Type": "application/json"}
+
+
+@app.route("/api/modes", methods=["GET"])
+def api_modes():
+    return json.dumps(MODES, ensure_ascii=False), 200, {"Content-Type": "application/json"}
+
+
+# ============================================================
+# ЗАПУСК
+# ============================================================
 
 def setup_webhook():
-    if RENDER_URL:
+    if RENDER_URL and TELEGRAM_BOT_TOKEN:
         url = "https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/setWebhook"
-        resp = requests.post(url, json={"url": RENDER_URL + "/webhook"}, timeout=10)
-        print("Webhook:", resp.json())
+        try:
+            resp = requests.post(url, json={"url": RENDER_URL + "/webhook"}, timeout=10)
+            print("Webhook:", resp.json())
+        except Exception as e:
+            print("Webhook error:", e)
 
 
 def keep_alive():
@@ -1023,4 +1348,5 @@ if __name__ == "__main__":
     setup_webhook()
     threading.Thread(target=keep_alive, daemon=True).start()
     port = int(os.environ.get("PORT", 10000))
+    print(f"\n🤖 JARVIS 2.0 запущен на http://localhost:{port}\n")
     app.run(host="0.0.0.0", port=port)
