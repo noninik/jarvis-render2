@@ -18,689 +18,572 @@
 }
 html,body{height:100%;font-family:var(--sans);background:var(--bg);color:var(--t1);overflow:hidden}
 
-/* LAYOUT */
-.app{display:grid;grid-template-columns:280px 1fr 300px;grid-template-rows:48px 1fr;height:100vh}
+.app{display:grid;grid-template-columns:260px 1fr 280px;grid-template-rows:46px 1fr;height:100vh}
 
 /* TOP */
-.top{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;padding:0 16px;
+.top{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;padding:0 14px;
   background:rgba(10,14,23,.95);border-bottom:1px solid var(--brd)}
 .logo{display:flex;align-items:center;gap:8px}
-.logo b{font-family:var(--mono);font-size:1rem;letter-spacing:3px;
+.logo b{font-family:var(--mono);font-size:.95rem;letter-spacing:3px;
   background:linear-gradient(135deg,var(--cyan),var(--violet));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.logo small{font-size:.6rem;color:var(--t3);background:var(--glass);padding:2px 6px;border-radius:3px}
-.nav{display:flex;gap:4px}
-.nav button{font-size:.75rem;padding:6px 14px;border-radius:6px;border:none;background:none;color:var(--t3);cursor:pointer}
+.logo small{font-size:.55rem;color:var(--t3);background:var(--glass);padding:2px 5px;border-radius:3px}
+.nav{display:flex;gap:3px}
+.nav button{font-size:.7rem;padding:5px 12px;border-radius:6px;border:none;background:none;color:var(--t3);cursor:pointer;transition:.15s}
 .nav button:hover{color:var(--t2);background:var(--glass)}
 .nav button.on{color:var(--cyan);background:rgba(0,240,255,.1)}
-.status{display:flex;align-items:center;gap:6px;font-size:.65rem;color:var(--t3)}
-.status .dot{width:6px;height:6px;border-radius:50%;background:var(--green);animation:pulse 2s infinite}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.status{display:flex;align-items:center;gap:5px;font-size:.6rem;color:var(--t3)}
+.status .dot{width:5px;height:5px;border-radius:50%;background:var(--green);animation:p 2s infinite}
+@keyframes p{0%,100%{opacity:1}50%{opacity:.3}}
 
 /* LEFT */
 .left{background:rgba(10,14,23,.7);border-right:1px solid var(--brd);display:flex;flex-direction:column;overflow:hidden}
-.player{margin:10px;padding:12px;background:linear-gradient(135deg,rgba(139,92,246,.08),rgba(0,240,255,.04));
-  border:1px solid rgba(139,92,246,.15);border-radius:12px}
-.player-top{display:flex;justify-content:space-between;margin-bottom:6px}
-.player-rank{font-family:var(--mono);font-size:.65rem;color:var(--violet);font-weight:700}
-.player-xp{font-family:var(--mono);font-size:.6rem;color:var(--t3)}
-.xp-bar{width:100%;height:4px;background:var(--bg);border-radius:2px;overflow:hidden;margin-bottom:8px}
+.player{margin:8px;padding:10px;background:linear-gradient(135deg,rgba(139,92,246,.08),rgba(0,240,255,.04));
+  border:1px solid rgba(139,92,246,.15);border-radius:10px}
+.player-top{display:flex;justify-content:space-between;margin-bottom:5px}
+.player-rank{font-family:var(--mono);font-size:.6rem;color:var(--violet);font-weight:700}
+.player-xp{font-family:var(--mono);font-size:.55rem;color:var(--t3)}
+.xp-bar{width:100%;height:4px;background:var(--bg);border-radius:2px;overflow:hidden;margin-bottom:6px}
 .xp-fill{height:100%;background:linear-gradient(90deg,var(--violet),var(--cyan));border-radius:2px;transition:width 1s}
-.player-stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;text-align:center}
-.player-stats .v{font-family:var(--mono);font-size:1rem;font-weight:700}
-.player-stats .l{font-size:.5rem;color:var(--t3);text-transform:uppercase}
+.pstats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;text-align:center}
+.pstats .v{font-family:var(--mono);font-size:.9rem;font-weight:700}
+.pstats .l{font-size:.45rem;color:var(--t3);text-transform:uppercase}
 
-.left-scroll{flex:1;overflow-y:auto;padding:0 8px}
-.left-scroll::-webkit-scrollbar{width:3px}
-.left-scroll::-webkit-scrollbar-thumb{background:var(--bg3);border-radius:2px}
-.section-label{font-family:var(--mono);font-size:.55rem;color:var(--t3);text-transform:uppercase;letter-spacing:2px;
-  padding:10px 4px 4px;display:flex;justify-content:space-between}
-.section-label .cnt{font-size:.5rem;color:var(--cyan);background:rgba(0,240,255,.1);padding:1px 6px;border-radius:7px}
+.lscroll{flex:1;overflow-y:auto;padding:0 6px}
+.lscroll::-webkit-scrollbar{width:3px}
+.lscroll::-webkit-scrollbar-thumb{background:var(--bg3);border-radius:2px}
+.slabel{font-family:var(--mono);font-size:.5rem;color:var(--t3);text-transform:uppercase;letter-spacing:2px;
+  padding:8px 4px 4px;display:flex;justify-content:space-between}
+.slabel .cnt{font-size:.45rem;color:var(--cyan);background:rgba(0,240,255,.1);padding:1px 5px;border-radius:7px}
 
-.mode-item{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;cursor:pointer;
-  border-left:3px solid transparent;transition:.15s}
-.mode-item:hover{background:var(--glass)}
-.mode-item.on{background:rgba(0,240,255,.08);border-left-color:var(--cyan)}
-.mode-item .icon{width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;
-  font-size:.8rem;background:var(--glass)}
-.mode-item .name{font-size:.75rem;font-weight:600}
+.mi{display:flex;align-items:center;gap:7px;padding:6px 7px;border-radius:7px;cursor:pointer;
+  border-left:3px solid transparent;transition:.15s;font-size:.7rem}
+.mi:hover{background:var(--glass)}
+.mi.on{background:rgba(0,240,255,.08);border-left-color:var(--cyan)}
+.mi .ic{width:24px;height:24px;border-radius:5px;display:flex;align-items:center;justify-content:center;
+  font-size:.7rem;background:var(--glass);flex-shrink:0}
+.mi .nm{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
-.proj-item{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;cursor:pointer;transition:.15s}
-.proj-item:hover{background:var(--glass)}
-.proj-item .dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
-.proj-item .pname{font-size:.7rem;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.proj-item .prev{font-family:var(--mono);font-size:.6rem;color:var(--green);flex-shrink:0}
+.pi{display:flex;align-items:center;gap:7px;padding:5px 7px;border-radius:7px;cursor:pointer;transition:.15s;font-size:.65rem}
+.pi:hover{background:var(--glass)}
+.pi .dt{width:5px;height:5px;border-radius:50%;flex-shrink:0}
+.pi .pn{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pi .pr{font-family:var(--mono);font-size:.55rem;color:var(--green);flex-shrink:0}
 
-.new-btn{margin:8px;padding:8px;border:1px dashed var(--brd-a);border-radius:8px;background:none;color:var(--cyan);
-  font-family:var(--mono);font-size:.7rem;cursor:pointer;text-align:center;transition:.15s}
-.new-btn:hover{background:rgba(0,240,255,.08);border-style:solid}
+.nbtn{margin:6px;padding:7px;border:1px dashed var(--brd-a);border-radius:7px;background:none;color:var(--cyan);
+  font-family:var(--mono);font-size:.65rem;cursor:pointer;text-align:center;transition:.15s}
+.nbtn:hover{background:rgba(0,240,255,.08);border-style:solid}
 
 /* MAIN */
 .main{display:flex;flex-direction:column;overflow:hidden}
 .view{display:none;flex:1;overflow:hidden}
 .view.on{display:flex;flex-direction:column}
 
-/* DASHBOARD */
-.dash{flex:1;overflow-y:auto;padding:16px}
+/* DASH */
+.dash{flex:1;overflow-y:auto;padding:14px}
 .dash::-webkit-scrollbar{width:3px}
 .dash::-webkit-scrollbar-thumb{background:var(--bg3);border-radius:2px}
 
-.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px}
-.stat-card{background:var(--card);border:1px solid var(--brd);border-radius:12px;padding:14px;position:relative;overflow:hidden}
-.stat-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px}
-.stat-card:nth-child(1)::before{background:var(--cyan)}
-.stat-card:nth-child(2)::before{background:var(--violet)}
-.stat-card:nth-child(3)::before{background:var(--green)}
-.stat-card:nth-child(4)::before{background:var(--pink)}
-.stat-card .label{font-family:var(--mono);font-size:.55rem;color:var(--t3);text-transform:uppercase;letter-spacing:.5px}
-.stat-card .value{font-family:var(--mono);font-size:1.4rem;font-weight:800;margin-top:4px}
-.stat-card:nth-child(1) .value{color:var(--cyan)}
-.stat-card:nth-child(2) .value{color:var(--violet)}
-.stat-card:nth-child(3) .value{color:var(--green)}
-.stat-card:nth-child(4) .value{color:var(--pink)}
-.stat-card .sub{font-size:.6rem;color:var(--t3);margin-top:2px}
+/* MISSION */
+.mission{background:linear-gradient(135deg,rgba(0,240,255,.04),rgba(139,92,246,.04));border:1px solid var(--brd);
+  border-radius:14px;padding:14px;margin-bottom:12px;position:relative}
+.mission::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--cyan),var(--violet),transparent)}
+.mission-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.mission-badge{font-family:var(--mono);font-size:.5rem;font-weight:700;color:var(--bg);background:linear-gradient(135deg,var(--cyan),var(--violet));
+  padding:2px 8px;border-radius:6px;text-transform:uppercase;letter-spacing:1px}
+.mission-name{font-size:.85rem;font-weight:700;margin-left:8px}
+.mission-timer{font-family:var(--mono);font-size:.6rem;color:var(--t3)}
+.mission-bar{width:100%;height:5px;background:var(--bg);border-radius:3px;overflow:hidden;margin-bottom:8px}
+.mission-fill{height:100%;background:linear-gradient(90deg,var(--cyan),var(--violet));border-radius:3px;transition:width .5s}
+.mission-tasks{display:flex;flex-direction:column;gap:4px}
+.mt{display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:6px;cursor:pointer;transition:.15s;font-size:.7rem}
+.mt:hover{background:var(--glass)}
+.mt .ch{width:14px;height:14px;border:2px solid var(--t3);border-radius:3px;display:flex;align-items:center;
+  justify-content:center;font-size:.45rem;flex-shrink:0;transition:.15s}
+.mt.done .ch{background:var(--green);border-color:var(--green);color:var(--bg)}
+.mt .tx{color:var(--t2)}
+.mt.done .tx{color:var(--t3);text-decoration:line-through}
 
-.niche-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:16px}
-.niche-card{background:var(--card);border:1px solid var(--brd);border-radius:12px;padding:14px;cursor:pointer;transition:.2s}
-.niche-card:hover{border-color:var(--brd-a);transform:translateY(-2px)}
-.niche-card .nc-top{display:flex;justify-content:space-between;margin-bottom:6px}
-.niche-card .nc-score{font-family:var(--mono);font-size:.65rem;font-weight:700;color:var(--green);
-  background:rgba(52,211,153,.1);padding:2px 8px;border-radius:5px}
-.niche-card .nc-title{font-size:.85rem;font-weight:600;margin-bottom:4px}
-.niche-card .nc-desc{font-size:.65rem;color:var(--t2);line-height:1.5;margin-bottom:8px}
-.niche-card .nc-metrics{display:flex;gap:12px;padding-top:8px;border-top:1px solid var(--brd)}
-.niche-card .nc-m{text-align:center}
-.niche-card .nc-mv{font-family:var(--mono);font-size:.7rem;font-weight:700}
-.niche-card .nc-ml{font-size:.45rem;color:var(--t3);text-transform:uppercase}
+.sgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-bottom:14px}
+.sc{background:var(--card);border:1px solid var(--brd);border-radius:10px;padding:12px;position:relative;overflow:hidden}
+.sc::before{content:'';position:absolute;top:0;left:0;right:0;height:2px}
+.sc:nth-child(1)::before{background:var(--cyan)}.sc:nth-child(2)::before{background:var(--violet)}
+.sc:nth-child(3)::before{background:var(--green)}.sc:nth-child(4)::before{background:var(--pink)}
+.sc .lb{font-family:var(--mono);font-size:.5rem;color:var(--t3);text-transform:uppercase;letter-spacing:.5px}
+.sc .vl{font-family:var(--mono);font-size:1.2rem;font-weight:800;margin-top:3px}
+.sc:nth-child(1) .vl{color:var(--cyan)}.sc:nth-child(2) .vl{color:var(--violet)}
+.sc:nth-child(3) .vl{color:var(--green)}.sc:nth-child(4) .vl{color:var(--pink)}
+.sc .sb{font-size:.55rem;color:var(--t3);margin-top:2px}
+
+.section-h{font-size:.85rem;font-weight:700;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+
+.ngrid{display:grid;grid-template-columns:repeat(2,1fr);gap:7px;margin-bottom:14px}
+.nc{background:var(--card);border:1px solid var(--brd);border-radius:10px;padding:12px;cursor:pointer;transition:.2s}
+.nc:hover{border-color:var(--brd-a);transform:translateY(-2px)}
+.nc-top{display:flex;justify-content:space-between;margin-bottom:5px}
+.nc-score{font-family:var(--mono);font-size:.6rem;font-weight:700;color:var(--green);background:rgba(52,211,153,.1);padding:2px 7px;border-radius:5px}
+.nc-title{font-size:.78rem;font-weight:600;margin-bottom:4px}
+.nc-desc{font-size:.6rem;color:var(--t2);line-height:1.5;margin-bottom:7px}
+.nc-metrics{display:flex;gap:10px;padding-top:7px;border-top:1px solid var(--brd)}
+.nc-m{text-align:center}
+.nc-mv{font-family:var(--mono);font-size:.65rem;font-weight:700}
+.nc-ml{font-size:.4rem;color:var(--t3);text-transform:uppercase}
 
 /* CHAT */
-.chat-wrap{flex:1;display:flex;flex-direction:column}
-.messages{flex:1;overflow-y:auto;padding:16px}
-.messages::-webkit-scrollbar{width:3px}
-.messages::-webkit-scrollbar-thumb{background:var(--bg3);border-radius:2px}
+.cwrap{flex:1;display:flex;flex-direction:column}
+.msgs{flex:1;overflow-y:auto;padding:14px}
+.msgs::-webkit-scrollbar{width:3px}
+.msgs::-webkit-scrollbar-thumb{background:var(--bg3);border-radius:2px}
 
-.msg{display:flex;gap:8px;margin-bottom:14px;animation:fadeIn .3s}
-@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-.msg .avatar{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;
-  font-size:.8rem;flex-shrink:0}
-.msg .avatar.user{background:linear-gradient(135deg,var(--violet),var(--pink))}
-.msg .avatar.bot{background:linear-gradient(135deg,var(--cyan),var(--violet))}
-.msg .body{flex:1;min-width:0}
-.msg .sender{font-family:var(--mono);font-size:.6rem;font-weight:600;margin-bottom:3px}
-.msg .sender.u{color:var(--violet)}
-.msg .sender.b{color:var(--cyan)}
-.msg .bubble{font-size:.8rem;line-height:1.7;background:var(--card);border:1px solid var(--brd);
-  border-radius:4px 14px 14px 14px;padding:10px 14px;white-space:pre-wrap;word-break:break-word}
-.msg.user .bubble{background:rgba(139,92,246,.08);border-color:rgba(139,92,246,.15);border-radius:14px 4px 14px 14px}
-.msg .time{font-family:var(--mono);font-size:.5rem;color:var(--t3);margin-top:3px}
+.msg{display:flex;gap:8px;margin-bottom:12px;animation:fi .3s}
+@keyframes fi{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+.msg .av{width:30px;height:30px;border-radius:7px;display:flex;align-items:center;justify-content:center;
+  font-size:.75rem;flex-shrink:0}
+.msg .av.u{background:linear-gradient(135deg,var(--violet),var(--pink))}
+.msg .av.b{background:linear-gradient(135deg,var(--cyan),var(--violet))}
+.msg .bd{flex:1;min-width:0}
+.msg .sn{font-family:var(--mono);font-size:.55rem;font-weight:600;margin-bottom:2px}
+.msg .sn.un{color:var(--violet)}.msg .sn.bn{color:var(--cyan)}
+.msg .bl{font-size:.78rem;line-height:1.7;background:var(--card);border:1px solid var(--brd);
+  border-radius:3px 12px 12px 12px;padding:9px 12px;white-space:pre-wrap;word-break:break-word}
+.msg.usr .bl{background:rgba(139,92,246,.08);border-color:rgba(139,92,246,.15);border-radius:12px 3px 12px 12px}
+.msg .tm{font-family:var(--mono);font-size:.45rem;color:var(--t3);margin-top:2px}
 
-.typing{display:none;align-items:center;gap:4px;padding:6px 16px;font-family:var(--mono);font-size:.65rem;color:var(--cyan)}
+.typing{display:none;align-items:center;gap:4px;padding:5px 14px;font-family:var(--mono);font-size:.6rem;color:var(--cyan)}
 .typing.on{display:flex}
-.typing .d{width:4px;height:4px;border-radius:50%;background:var(--cyan);animation:bounce 1.4s infinite}
-.typing .d:nth-child(2){animation-delay:.2s}
-.typing .d:nth-child(3){animation-delay:.4s}
-@keyframes bounce{0%,60%,100%{transform:translateY(0);opacity:.3}30%{transform:translateY(-4px);opacity:1}}
+.typing .d{width:4px;height:4px;border-radius:50%;background:var(--cyan);animation:bn 1.4s infinite}
+.typing .d:nth-child(2){animation-delay:.2s}.typing .d:nth-child(3){animation-delay:.4s}
+@keyframes bn{0%,60%,100%{transform:translateY(0);opacity:.3}30%{transform:translateY(-3px);opacity:1}}
 
-.input-area{padding:10px 14px;border-top:1px solid var(--brd);background:rgba(10,14,23,.8)}
-.input-row{display:flex;gap:6px}
-.input-row textarea{flex:1;padding:10px 12px;background:var(--bg3);border:1px solid var(--brd);border-radius:10px;
-  color:var(--t1);font-family:var(--sans);font-size:.85rem;resize:none;outline:none}
-.input-row textarea:focus{border-color:var(--brd-a)}
-.input-row textarea::placeholder{color:var(--t3)}
-.send-btn{padding:10px 20px;background:linear-gradient(135deg,var(--cyan),var(--violet));border:none;border-radius:10px;
-  color:var(--bg);font-family:var(--mono);font-size:.75rem;font-weight:700;cursor:pointer;letter-spacing:1px}
-.send-btn:hover{box-shadow:0 0 16px rgba(0,240,255,.3)}
-.send-btn:disabled{opacity:.4;cursor:not-allowed}
-.input-hint{font-family:var(--mono);font-size:.5rem;color:var(--t3);margin-top:4px;text-align:center}
+.iarea{padding:8px 12px;border-top:1px solid var(--brd);background:rgba(10,14,23,.8)}
+.irow{display:flex;gap:5px}
+.irow textarea{flex:1;padding:8px 10px;background:var(--bg3);border:1px solid var(--brd);border-radius:8px;
+  color:var(--t1);font-family:var(--sans);font-size:.8rem;resize:none;outline:none}
+.irow textarea:focus{border-color:var(--brd-a)}
+.irow textarea::placeholder{color:var(--t3)}
+.sbtn{padding:8px 16px;background:linear-gradient(135deg,var(--cyan),var(--violet));border:none;border-radius:8px;
+  color:var(--bg);font-family:var(--mono);font-size:.7rem;font-weight:700;cursor:pointer;letter-spacing:1px}
+.sbtn:hover{box-shadow:0 0 14px rgba(0,240,255,.3)}
+.sbtn:disabled{opacity:.4;cursor:not-allowed}
+.ihint{font-family:var(--mono);font-size:.45rem;color:var(--t3);margin-top:3px;text-align:center}
 
 /* RIGHT */
-.right{background:rgba(10,14,23,.7);border-left:1px solid var(--brd);overflow-y:auto;padding:12px}
+.right{background:rgba(10,14,23,.7);border-left:1px solid var(--brd);overflow-y:auto;padding:10px}
 .right::-webkit-scrollbar{width:3px}
 .right::-webkit-scrollbar-thumb{background:var(--bg3);border-radius:2px}
 
-.right-section{margin-bottom:14px}
-.right-title{font-family:var(--mono);font-size:.6rem;color:var(--t3);text-transform:uppercase;letter-spacing:2px;
-  margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.rsec{margin-bottom:12px}
+.rtitle{font-family:var(--mono);font-size:.55rem;color:var(--t3);text-transform:uppercase;letter-spacing:2px;margin-bottom:7px}
 
-.quest-card{background:var(--card);border:1px solid var(--brd);border-radius:12px;padding:12px;margin-bottom:6px}
-.quest-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
-.quest-priority{font-family:var(--mono);font-size:.5rem;font-weight:700;padding:2px 6px;border-radius:4px;text-transform:uppercase}
-.quest-priority.urgent{color:var(--red);background:rgba(248,113,113,.1)}
-.quest-priority.normal{color:var(--cyan);background:rgba(0,240,255,.1)}
-.quest-xp{font-family:var(--mono);font-size:.55rem;color:var(--violet);font-weight:600}
-.quest-name{font-size:.8rem;font-weight:600;margin-bottom:6px}
-.quest-task{display:flex;align-items:center;gap:6px;padding:4px 0;cursor:pointer}
-.quest-task .check{width:14px;height:14px;border:2px solid var(--t3);border-radius:3px;display:flex;
-  align-items:center;justify-content:center;font-size:.5rem;flex-shrink:0;transition:.15s}
-.quest-task.done .check{background:var(--green);border-color:var(--green);color:var(--bg)}
-.quest-task .task-text{font-size:.65rem;color:var(--t2)}
-.quest-task.done .task-text{color:var(--t3);text-decoration:line-through}
-.quest-progress{display:flex;align-items:center;gap:5px;margin-top:6px;padding-top:6px;border-top:1px solid var(--brd)}
-.quest-bar{flex:1;height:3px;background:var(--bg);border-radius:2px;overflow:hidden}
-.quest-fill{height:100%;border-radius:2px;background:linear-gradient(90deg,var(--green),var(--cyan));transition:width .4s}
-.quest-pct{font-family:var(--mono);font-size:.55rem;color:var(--t3)}
+.qc{background:var(--card);border:1px solid var(--brd);border-radius:10px;padding:10px;margin-bottom:5px}
+.qc-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:5px}
+.qp{font-family:var(--mono);font-size:.45rem;font-weight:700;padding:2px 5px;border-radius:3px;text-transform:uppercase}
+.qp.urg{color:var(--red);background:rgba(248,113,113,.1)}
+.qp.nrm{color:var(--cyan);background:rgba(0,240,255,.1)}
+.qxp{font-family:var(--mono);font-size:.5rem;color:var(--violet);font-weight:600}
+.qn{font-size:.73rem;font-weight:600;margin-bottom:5px}
+.qproj{font-size:.5rem;color:var(--t3);margin-bottom:4px;font-style:italic}
+.qt{display:flex;align-items:center;gap:5px;padding:3px 0;cursor:pointer;font-size:.6rem}
+.qt .qch{width:12px;height:12px;border:2px solid var(--t3);border-radius:3px;display:flex;align-items:center;
+  justify-content:center;font-size:.4rem;flex-shrink:0;transition:.15s}
+.qt.done .qch{background:var(--green);border-color:var(--green);color:var(--bg)}
+.qt .qtx{color:var(--t2)}
+.qt.done .qtx{color:var(--t3);text-decoration:line-through}
+.qprog{display:flex;align-items:center;gap:4px;margin-top:5px;padding-top:5px;border-top:1px solid var(--brd)}
+.qbar{flex:1;height:3px;background:var(--bg);border-radius:2px;overflow:hidden}
+.qfill{height:100%;border-radius:2px;background:linear-gradient(90deg,var(--green),var(--cyan));transition:width .4s}
+.qpct{font-family:var(--mono);font-size:.5rem;color:var(--t3)}
 
-.achievements{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}
-.ach{aspect-ratio:1;border-radius:10px;border:1px solid var(--brd);background:var(--glass);
+.agrid{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}
+.ach{aspect-ratio:1;border-radius:8px;border:1px solid var(--brd);background:var(--glass);
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
-.ach.unlocked{background:linear-gradient(135deg,rgba(0,240,255,.06),rgba(139,92,246,.06));border-color:rgba(0,240,255,.15)}
-.ach.locked{opacity:.35}
-.ach .ach-icon{font-size:1rem}
-.ach .ach-name{font-size:.45rem;color:var(--t3);text-align:center}
-.ach.unlocked .ach-name{color:var(--t2)}
+.ach.ul{background:linear-gradient(135deg,rgba(0,240,255,.06),rgba(139,92,246,.06));border-color:rgba(0,240,255,.15)}
+.ach.lk{opacity:.3}
+.ach .ai{font-size:.9rem}
+.ach .an{font-size:.4rem;color:var(--t3);text-align:center}
+.ach.ul .an{color:var(--t2)}
+
+/* XP popup */
+.xpop{position:fixed;color:var(--violet);font-family:var(--mono);font-size:.8rem;font-weight:700;
+  pointer-events:none;z-index:9999;animation:xpu 1.2s ease forwards}
+@keyframes xpu{0%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-25px)}}
 
 /* MODAL */
-.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(6px);z-index:5000;
+.mo{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(5px);z-index:5000;
   justify-content:center;align-items:center}
-.modal-overlay.on{display:flex}
-.modal{background:var(--bg2);border:1px solid var(--brd);border-radius:16px;padding:20px;width:90%;max-width:500px;
-  animation:modalIn .3s}
-@keyframes modalIn{from{opacity:0;transform:scale(.95) translateY(8px)}to{opacity:1;transform:none}}
-.modal h3{font-size:1rem;margin-bottom:14px;display:flex;align-items:center;gap:8px}
-.modal .field{margin-bottom:10px}
-.modal .field label{display:block;font-family:var(--mono);font-size:.6rem;color:var(--t3);text-transform:uppercase;
-  letter-spacing:1px;margin-bottom:3px}
-.modal .field input,.modal .field textarea{width:100%;padding:8px 10px;background:var(--bg3);border:1px solid var(--brd);
-  border-radius:8px;color:var(--t1);font-family:var(--sans);font-size:.8rem;outline:none}
-.modal .field input:focus,.modal .field textarea:focus{border-color:var(--brd-a)}
-.modal .field textarea{resize:vertical;min-height:60px}
-.modal .actions{display:flex;gap:6px;justify-content:flex-end;margin-top:14px}
-.modal .btn{padding:8px 18px;border-radius:8px;font-family:var(--mono);font-size:.7rem;font-weight:600;cursor:pointer;border:none}
-.modal .btn.primary{background:linear-gradient(135deg,var(--cyan),var(--violet));color:var(--bg)}
-.modal .btn.secondary{background:var(--glass);color:var(--t2);border:1px solid var(--brd)}
-
-.modal-result{font-size:.8rem;line-height:1.6;white-space:pre-wrap;max-height:55vh;overflow-y:auto;margin-top:10px;
-  padding:12px;background:var(--bg);border-radius:8px;border:1px solid var(--brd)}
+.mo.on{display:flex}
+.mod{background:var(--bg2);border:1px solid var(--brd);border-radius:14px;padding:18px;width:90%;max-width:480px;
+  animation:modin .3s}
+@keyframes modin{from{opacity:0;transform:scale(.95)}to{opacity:1;transform:none}}
+.mod h3{font-size:.95rem;margin-bottom:12px}
+.mod .fld{margin-bottom:8px}
+.mod .fld label{display:block;font-family:var(--mono);font-size:.55rem;color:var(--t3);text-transform:uppercase;letter-spacing:1px;margin-bottom:2px}
+.mod .fld input,.mod .fld textarea{width:100%;padding:7px 9px;background:var(--bg3);border:1px solid var(--brd);
+  border-radius:7px;color:var(--t1);font-family:var(--sans);font-size:.78rem;outline:none}
+.mod .fld input:focus,.mod .fld textarea:focus{border-color:var(--brd-a)}
+.mod .fld textarea{resize:vertical;min-height:50px}
+.mod .acts{display:flex;gap:5px;justify-content:flex-end;margin-top:12px}
+.mod .btn{padding:7px 16px;border-radius:7px;font-family:var(--mono);font-size:.65rem;font-weight:600;cursor:pointer;border:none;transition:.15s}
+.mod .btn.pri{background:linear-gradient(135deg,var(--cyan),var(--violet));color:var(--bg)}
+.mod .btn.sec{background:var(--glass);color:var(--t2);border:1px solid var(--brd)}
+.mod-res{font-size:.75rem;line-height:1.6;white-space:pre-wrap;max-height:50vh;overflow-y:auto;margin-top:8px;
+  padding:10px;background:var(--bg);border-radius:7px;border:1px solid var(--brd)}
 
 @media(max-width:900px){
   .app{grid-template-columns:1fr}
   .left,.right{display:none}
-  .niche-grid{grid-template-columns:1fr}
-  .stats-grid{grid-template-columns:repeat(2,1fr)}
+  .ngrid,.sgrid{grid-template-columns:repeat(2,1fr)}
 }
 </style>
 </head>
 <body>
 <div class="app">
 
-  <!-- TOPBAR -->
-  <header class="top">
-    <div class="logo"><b>JARVIS</b><small>v2.0</small></div>
-    <nav class="nav">
-      <button class="on" onclick="switchView('dash',this)">🎯 Центр</button>
-      <button onclick="switchView('chat',this)">💬 Чат</button>
-    </nav>
-    <div class="status"><div class="dot"></div>Online · Groq</div>
-  </header>
+<header class="top">
+  <div class="logo"><b>JARVIS</b><small>v2.0</small></div>
+  <nav class="nav">
+    <button class="on" onclick="sw('dash',this)">🎯 Центр</button>
+    <button onclick="sw('chat',this)">💬 Чат</button>
+  </nav>
+  <div class="status"><div class="dot"></div>Online</div>
+</header>
 
-  <!-- LEFT SIDEBAR -->
-  <aside class="left">
-    <div class="player">
-      <div class="player-top">
-        <span class="player-rank" id="playerRank">⚡ Ур.1 — Новичок</span>
-        <span class="player-xp" id="playerXP">0/1000 XP</span>
-      </div>
-      <div class="xp-bar"><div class="xp-fill" id="xpFill" style="width:0%"></div></div>
-      <div class="player-stats">
-        <div><div class="v" id="statProj">0</div><div class="l">Проекты</div></div>
-        <div><div class="v" id="statQuest">0</div><div class="l">Квесты</div></div>
-        <div><div class="v" id="statStreak">0</div><div class="l">🔥</div></div>
-      </div>
+<aside class="left">
+  <div class="player">
+    <div class="player-top">
+      <span class="player-rank" id="pRank">⚡ Ур.1 — Новичок</span>
+      <span class="player-xp" id="pXP">0/1000 XP</span>
     </div>
-
-    <div class="left-scroll">
-      <div class="section-label">Режимы <span class="cnt">10</span></div>
-      <div id="modeList"></div>
-
-      <div class="section-label" style="margin-top:8px">Проекты <span class="cnt" id="projCnt">0</span></div>
-      <div id="projList"></div>
+    <div class="xp-bar"><div class="xp-fill" id="xFill" style="width:0%"></div></div>
+    <div class="pstats">
+      <div><div class="v" id="sP">0</div><div class="l">Проекты</div></div>
+      <div><div class="v" id="sQ">0</div><div class="l">Квесты</div></div>
+      <div><div class="v" id="sS">0</div><div class="l">🔥</div></div>
     </div>
+  </div>
+  <div class="lscroll">
+    <div class="slabel">Режимы</div>
+    <div id="modeList"></div>
+    <div class="slabel" style="margin-top:6px">Проекты <span class="cnt" id="pCnt">0</span></div>
+    <div id="projList"></div>
+  </div>
+  <button class="nbtn" onclick="openM('mNew')">➕ Новый проект</button>
+</aside>
 
-    <button class="new-btn" onclick="openNewProject()">➕ Новый проект</button>
-  </aside>
+<div class="main">
 
-  <!-- MAIN -->
-  <div class="main">
+  <!-- DASHBOARD -->
+  <div class="view on" id="v-dash">
+    <div class="dash">
+      <!-- MISSION -->
+      <div class="mission" id="missionBlock"></div>
 
-    <!-- DASHBOARD -->
-    <div class="view on" id="v-dash">
-      <div class="dash">
-        <div class="stats-grid">
-          <div class="stat-card"><div class="label">Проекты</div><div class="value" id="dashProj">0</div><div class="sub">активных</div></div>
-          <div class="stat-card"><div class="label">Квесты</div><div class="value" id="dashQuest">0</div><div class="sub">активных</div></div>
-          <div class="stat-card"><div class="label">MRR</div><div class="value" id="dashMRR">$0</div><div class="sub">доход</div></div>
-          <div class="stat-card"><div class="label">XP</div><div class="value" id="dashXP">0</div><div class="sub">всего</div></div>
-        </div>
-
-        <h3 style="margin-bottom:10px;font-size:.9rem">🔍 Идеи для ниш</h3>
-        <div class="niche-grid" id="nicheGrid"></div>
+      <div class="sgrid">
+        <div class="sc"><div class="lb">Проекты</div><div class="vl" id="dP">0</div><div class="sb">активных</div></div>
+        <div class="sc"><div class="lb">Квесты</div><div class="vl" id="dQ">0</div><div class="sb">активных</div></div>
+        <div class="sc"><div class="lb">MRR</div><div class="vl" id="dM">$0</div><div class="sb">доход</div></div>
+        <div class="sc"><div class="lb">XP</div><div class="vl" id="dX">0</div><div class="sb">всего</div></div>
       </div>
-    </div>
 
-    <!-- CHAT -->
-    <div class="view" id="v-chat">
-      <div class="chat-wrap">
-        <div class="messages" id="chatMessages">
-          <div class="msg">
-            <div class="avatar bot">J</div>
-            <div class="body">
-              <div class="sender b">JARVIS 2.0</div>
-              <div class="bubble">Привет, командир! 🤖
+      <div class="section-h">🔍 Идеи для ниш</div>
+      <div class="ngrid" id="nicheGrid"></div>
+    </div>
+  </div>
+
+  <!-- CHAT -->
+  <div class="view" id="v-chat">
+    <div class="cwrap">
+      <div class="msgs" id="msgs">
+        <div class="msg"><div class="av b">J</div><div class="bd"><div class="sn bn">JARVIS 2.0</div>
+        <div class="bl">Привет, командир! 🤖
 
 Я — JARVIS 2.0. Вот что умею:
 
 🔍 «Проанализируй нишу: [описание]»
 📋 «Разбей на спринты: [проект]»
 💡 «Какие ниши сейчас растут?»
-📊 «Составь план для: [идея]»
 
-Что строим?</div>
-              <div class="time">сейчас</div>
-            </div>
-          </div>
+Что строим?</div><div class="tm">сейчас</div></div></div>
+      </div>
+      <div class="typing" id="typing"><div class="d"></div><div class="d"></div><div class="d"></div><span style="margin-left:5px">JARVIS думает...</span></div>
+      <div class="iarea">
+        <div class="irow">
+          <textarea id="inp" placeholder="Спроси JARVIS..." rows="1" onkeydown="ik(event)"></textarea>
+          <button class="sbtn" id="sbtn" onclick="send()">SEND</button>
         </div>
-        <div class="typing" id="typing"><div class="d"></div><div class="d"></div><div class="d"></div><span style="margin-left:6px">JARVIS думает...</span></div>
-        <div class="input-area">
-          <div class="input-row">
-            <textarea id="chatInput" placeholder="Спроси JARVIS..." rows="1" onkeydown="handleKey(event)"></textarea>
-            <button class="send-btn" id="sendBtn" onclick="sendMessage()">SEND</button>
-          </div>
-          <div class="input-hint">Enter — отправить · Shift+Enter — новая строка</div>
-        </div>
+        <div class="ihint">Enter — отправить · Shift+Enter — строка</div>
       </div>
     </div>
   </div>
-
-  <!-- RIGHT SIDEBAR -->
-  <aside class="right">
-    <div class="right-section">
-      <div class="right-title">⚔️ Квесты</div>
-      <div id="questList"></div>
-    </div>
-
-    <div class="right-section">
-      <div class="right-title">🏆 Достижения</div>
-      <div class="achievements">
-        <div class="ach unlocked"><div class="ach-icon">🚀</div><div class="ach-name">Старт</div></div>
-        <div class="ach unlocked"><div class="ach-icon">💬</div><div class="ach-name">Первый чат</div></div>
-        <div class="ach locked"><div class="ach-icon">💰</div><div class="ach-name">$1K</div></div>
-        <div class="ach locked"><div class="ach-icon">⚡</div><div class="ach-name">100 XP</div></div>
-        <div class="ach locked"><div class="ach-icon">🔥</div><div class="ach-name">7д серия</div></div>
-        <div class="ach locked"><div class="ach-icon">👑</div><div class="ach-name">Магнат</div></div>
-      </div>
-    </div>
-  </aside>
 </div>
 
-<!-- NEW PROJECT MODAL -->
-<div class="modal-overlay" id="modalNewProject">
-  <div class="modal">
-    <h3>🚀 Новый проект</h3>
-    <div class="field"><label>Название</label><input id="npName" placeholder="SaaS для фрилансеров..."></div>
-    <div class="field"><label>Описание</label><textarea id="npDesc" placeholder="Что за продукт..."></textarea></div>
-    <div class="field"><label>Монетизация</label><input id="npMon" placeholder="$19/мес подписка"></div>
-    <div class="actions">
-      <button class="btn secondary" onclick="closeModal('modalNewProject')">Отмена</button>
-      <button class="btn primary" onclick="createProject()">Создать</button>
-    </div>
+<aside class="right">
+  <div class="rsec">
+    <div class="rtitle">⚔️ Квесты</div>
+    <div id="questList"></div>
   </div>
+  <div class="rsec">
+    <div class="rtitle">🏆 Достижения</div>
+    <div class="agrid" id="achList"></div>
+  </div>
+</aside>
+
 </div>
 
-<!-- NICHE ANALYSIS MODAL -->
-<div class="modal-overlay" id="modalNiche">
-  <div class="modal" style="max-width:600px">
-    <h3>🔍 Анализ ниши</h3>
-    <div class="modal-result" id="nicheResult">Загрузка...</div>
-    <div class="actions">
-      <button class="btn secondary" onclick="closeModal('modalNiche')">Закрыть</button>
-    </div>
+<!-- MODALS -->
+<div class="mo" id="mNew"><div class="mod">
+  <h3>🚀 Новый проект</h3>
+  <div class="fld"><label>Название</label><input id="npN" placeholder="SaaS для фрилансеров..."></div>
+  <div class="fld"><label>Описание</label><textarea id="npD" placeholder="Что за продукт..."></textarea></div>
+  <div class="fld"><label>Монетизация</label><input id="npM" placeholder="$19/мес подписка"></div>
+  <div class="acts">
+    <button class="btn sec" onclick="closeM('mNew')">Отмена</button>
+    <button class="btn pri" onclick="createProj()">Создать</button>
   </div>
-</div>
+</div></div>
+
+<div class="mo" id="mNiche"><div class="mod" style="max-width:560px">
+  <h3>🔍 Анализ ниши</h3>
+  <div class="mod-res" id="nicheRes">Загрузка...</div>
+  <div class="acts"><button class="btn sec" onclick="closeM('mNiche')">Закрыть</button></div>
+</div></div>
+
+<div class="mo" id="mRevenue"><div class="mod">
+  <h3>💰 Добавить доход</h3>
+  <div class="fld"><label>Сумма ($)</label><input id="revAmt" type="number" placeholder="100"></div>
+  <div class="acts">
+    <button class="btn sec" onclick="closeM('mRevenue')">Отмена</button>
+    <button class="btn pri" onclick="addRevenue()">Добавить</button>
+  </div>
+</div></div>
 
 <script>
-// === STATE ===
-const SID = 'web_' + Math.random().toString(36).substr(2,9);
-let currentMode = 'helper';
-let chatContext = [];
+const SID='w_'+Math.random().toString(36).substr(2,9);
+let curMode='helper', revProjId='';
 
-const MODES = {
-  helper:{name:"💬 Помощник",emoji:"💬"},
-  business:{name:"📊 Бизнес-аналитик",emoji:"📊"},
-  content:{name:"✍️ Контент-менеджер",emoji:"✍️"},
-  coder:{name:"💻 Программист",emoji:"💻"},
-  startup:{name:"📋 Стартап-консультант",emoji:"📋"},
-  research:{name:"🔍 Исследователь",emoji:"🔍"},
-  automate:{name:"🚀 Автоматизатор",emoji:"🚀"},
-  copywriter:{name:"📝 Копирайтер",emoji:"📝"},
-  coach:{name:"🎯 Коуч",emoji:"🎯"},
-  translator:{name:"🌍 Переводчик",emoji:"🌍"},
+const MODES={
+  helper:{n:"💬 Помощник",e:"💬"},business:{n:"📊 Бизнес",e:"📊"},content:{n:"✍️ Контент",e:"✍️"},
+  coder:{n:"💻 Код",e:"💻"},startup:{n:"📋 Стартап",e:"📋"},research:{n:"🔍 Исследование",e:"🔍"},
+  automate:{n:"🚀 Автоматизация",e:"🚀"},copywriter:{n:"📝 Копирайтинг",e:"📝"},
+  coach:{n:"🎯 Коуч",e:"🎯"},translator:{n:"🌍 Переводчик",e:"🌍"}
 };
 
-const NICHES = [
-  {title:"Планировщик для фрилансеров",desc:"Трекает доход и время. 478 апвоутов на Reddit.",score:"92%",tam:"$2.3M",comp:"Низкая",mvp:"2 нед"},
-  {title:"Генератор субтитров для видео",desc:"Автоперевод и озвучка. 340+ комментариев на YouTube.",score:"88%",tam:"$5.1M",comp:"Средняя",mvp:"3 нед"},
-  {title:"Простая CRM для малого бизнеса",desc:"Без десятков лишних функций. Группа 45К предпринимателей.",score:"76%",tam:"$8.7M",comp:"Высокая",mvp:"4 нед"},
-  {title:"Генератор инвойсов для подрядчиков",desc:"Топ-3 с плохим UX, нет мобильной версии.",score:"91%",tam:"$3.8M",comp:"Низкая",mvp:"1.5 нед"},
+const NICHES=[
+  {t:"Планировщик для фрилансеров",d:"478 апвоутов Reddit. Трекает доход и время.",s:"92%",tam:"$2.3M",comp:"Низкая",mvp:"2 нед"},
+  {t:"Генератор субтитров для видео",d:"340+ комментов YouTube. Автоперевод.",s:"88%",tam:"$5.1M",comp:"Средняя",mvp:"3 нед"},
+  {t:"Простая CRM для малого бизнеса",d:"Группа 45К. Без лишних функций.",s:"76%",tam:"$8.7M",comp:"Высокая",mvp:"4 нед"},
+  {t:"Генератор инвойсов",d:"Топ-3 с плохим UX, нет мобильной.",s:"91%",tam:"$3.8M",comp:"Низкая",mvp:"1.5 нед"},
 ];
 
-// === INIT ===
-document.addEventListener('DOMContentLoaded', () => {
-  renderModes();
-  renderNiches();
-  loadStats();
-  loadProjects();
-  loadQuests();
-});
+document.addEventListener('DOMContentLoaded',()=>{renderModes();renderNiches();load()});
 
-// === VIEWS ===
-function switchView(id, btn) {
-  document.querySelectorAll('.view').forEach(v => v.classList.remove('on'));
+function sw(id,btn){
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('on'));
   document.getElementById('v-'+id).classList.add('on');
-  document.querySelectorAll('.nav button').forEach(b => b.classList.remove('on'));
-  if(btn) btn.classList.add('on');
-  if(id === 'chat') {
-    const msgs = document.getElementById('chatMessages');
-    msgs.scrollTop = msgs.scrollHeight;
-    document.getElementById('chatInput').focus();
+  document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('on'));
+  if(btn)btn.classList.add('on');
+  if(id==='chat'){document.getElementById('msgs').scrollTop=9e9;document.getElementById('inp').focus()}
+}
+
+function renderModes(){
+  const l=document.getElementById('modeList');l.innerHTML='';
+  for(const[k,m]of Object.entries(MODES)){
+    const d=document.createElement('div');d.className='mi'+(k===curMode?' on':'');
+    d.innerHTML=`<div class="ic">${m.e}</div><div class="nm">${m.n}</div>`;
+    d.onclick=()=>{curMode=k;renderModes();fetch('/api/mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:SID,mode:k})})};
+    l.appendChild(d)
   }
 }
 
-// === MODES ===
-function renderModes() {
-  const list = document.getElementById('modeList');
-  list.innerHTML = '';
-  for(const [key, m] of Object.entries(MODES)) {
-    const div = document.createElement('div');
-    div.className = 'mode-item' + (key === currentMode ? ' on' : '');
-    div.innerHTML = `<div class="icon">${m.emoji}</div><div class="name">${m.name}</div>`;
-    div.onclick = () => setMode(key);
-    list.appendChild(div);
-  }
+function renderNiches(){
+  const g=document.getElementById('nicheGrid');g.innerHTML='';
+  NICHES.forEach(n=>{
+    const d=document.createElement('div');d.className='nc';d.onclick=()=>analyzeNiche(n.t);
+    d.innerHTML=`<div class="nc-top"><span style="font-size:.55rem;color:var(--t3)">🔍</span><span class="nc-score">${n.s}</span></div>
+      <div class="nc-title">${n.t}</div><div class="nc-desc">${n.d}</div>
+      <div class="nc-metrics"><div class="nc-m"><div class="nc-mv">${n.tam}</div><div class="nc-ml">TAM</div></div>
+      <div class="nc-m"><div class="nc-mv">${n.comp}</div><div class="nc-ml">Конкуренция</div></div>
+      <div class="nc-m"><div class="nc-mv">${n.mvp}</div><div class="nc-ml">MVP</div></div></div>`;
+    g.appendChild(d)
+  })
 }
 
-function setMode(key) {
-  currentMode = key;
-  renderModes();
-  fetch('/api/mode', {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({session_id:SID, mode:key})
-  });
-  chatContext = [];
+// CHAT
+function ik(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}}
+
+async function send(){
+  const i=document.getElementById('inp'),t=i.value.trim();if(!t)return;
+  i.value='';addMsg('user',t);showT(true);document.getElementById('sbtn').disabled=true;
+  try{
+    const r=await fetch('/api/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:SID,text:t})});
+    const d=await r.json();showT(false);
+    addMsg('bot',d.answer||d.error||'Ошибка',d.time);showXP('+25 XP')
+  }catch(e){showT(false);addMsg('bot','❌ Ошибка соединения')}
+  document.getElementById('sbtn').disabled=false;load()
 }
 
-// === CHAT ===
-function handleKey(e) {
-  if(e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    sendMessage();
-  }
+function addMsg(role,text,time){
+  const m=document.getElementById('msgs'),u=role==='user',
+    now=time||new Date().toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'}),
+    d=document.createElement('div');d.className='msg'+(u?' usr':'');
+  d.innerHTML=`<div class="av ${u?'u':'b'}">${u?'👤':'J'}</div><div class="bd">
+    <div class="sn ${u?'un':'bn'}">${u?'Вы':'JARVIS 2.0'}</div>
+    <div class="bl">${esc(text)}</div><div class="tm">${now}</div></div>`;
+  m.appendChild(d);m.scrollTop=9e9
 }
 
-async function sendMessage() {
-  const input = document.getElementById('chatInput');
-  const text = input.value.trim();
-  if(!text) return;
+function showT(s){document.getElementById('typing').classList.toggle('on',s)}
+function esc(t){const d=document.createElement('div');d.textContent=t;return d.innerHTML}
 
-  input.value = '';
-  addMsg('user', text);
-  showTyping(true);
-  document.getElementById('sendBtn').disabled = true;
-
-  try {
-    const resp = await fetch('/api/send', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({session_id:SID, text:text})
-    });
-    const data = await resp.json();
-    showTyping(false);
-    if(data.answer) {
-      addMsg('bot', data.answer, data.time);
-    } else {
-      addMsg('bot', 'Ошибка: ' + (data.error || 'неизвестная'));
-    }
-  } catch(e) {
-    showTyping(false);
-    addMsg('bot', '❌ Ошибка соединения');
-  }
-  document.getElementById('sendBtn').disabled = false;
-  loadStats();
+function showXP(text){
+  const x=document.createElement('div');x.className='xpop';x.textContent=text;
+  x.style.left=Math.random()*60+20+'%';x.style.top='50%';
+  document.body.appendChild(x);setTimeout(()=>x.remove(),1200)
 }
 
-function addMsg(role, text, time) {
-  const msgs = document.getElementById('chatMessages');
-  const isUser = role === 'user';
-  const now = time || new Date().toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});
+// LOAD DATA
+async function load(){
+  try{
+    const[stats,mission,ach]=await Promise.all([
+      fetch('/api/stats').then(r=>r.json()),
+      fetch('/api/mission').then(r=>r.json()),
+      fetch('/api/achievements').then(r=>r.json())
+    ]);
+    const p=stats.player||{};
+    document.getElementById('pRank').textContent=`⚡ Ур.${p.level||1} — ${p.rank||'Новичок'}`;
+    document.getElementById('pXP').textContent=`${p.xp||0}/${p.xp_to_next||1000} XP`;
+    document.getElementById('xFill').style.width=(p.xp_to_next?Math.round(p.xp/p.xp_to_next*100):0)+'%';
+    document.getElementById('sP').textContent=stats.active_projects||0;
+    document.getElementById('sQ').textContent=stats.active_quests||0;
+    document.getElementById('sS').textContent=p.streak||0;
+    document.getElementById('dP').textContent=stats.active_projects||0;
+    document.getElementById('dQ').textContent=stats.active_quests||0;
+    document.getElementById('dM').textContent='$'+(stats.total_revenue||0);
+    document.getElementById('dX').textContent=p.total_xp||0;
 
-  const div = document.createElement('div');
-  div.className = 'msg' + (isUser ? ' user' : '');
-  div.innerHTML = `
-    <div class="avatar ${isUser ? 'user' : 'bot'}">${isUser ? '👤' : 'J'}</div>
-    <div class="body">
-      <div class="sender ${isUser ? 'u' : 'b'}">${isUser ? 'Вы' : 'JARVIS 2.0'}</div>
-      <div class="bubble">${escapeHtml(text)}</div>
-      <div class="time">${now}</div>
-    </div>
-  `;
-  msgs.appendChild(div);
-  msgs.scrollTop = msgs.scrollHeight;
-}
-
-function showTyping(show) {
-  document.getElementById('typing').classList.toggle('on', show);
-}
-
-function escapeHtml(t) {
-  const d = document.createElement('div');
-  d.textContent = t;
-  return d.innerHTML;
-}
-
-// === STATS ===
-async function loadStats() {
-  try {
-    const resp = await fetch('/api/stats');
-    const data = await resp.json();
-    const p = data.player || {};
-
-    document.getElementById('playerRank').textContent = `⚡ Ур.${p.level||1} — ${p.rank||'Новичок'}`;
-    document.getElementById('playerXP').textContent = `${p.xp||0}/${p.xp_to_next||1000} XP`;
-    const pct = p.xp_to_next ? Math.round((p.xp/p.xp_to_next)*100) : 0;
-    document.getElementById('xpFill').style.width = pct+'%';
-
-    document.getElementById('statProj').textContent = data.total_projects || 0;
-    document.getElementById('statQuest').textContent = data.active_quests || 0;
-    document.getElementById('statStreak').textContent = p.streak || 0;
-
-    document.getElementById('dashProj').textContent = data.active_projects || 0;
-    document.getElementById('dashQuest').textContent = data.active_quests || 0;
-    document.getElementById('dashMRR').textContent = '$' + (data.total_revenue || 0);
-    document.getElementById('dashXP').textContent = p.xp || 0;
-  } catch(e) {
-    console.log('Stats error:', e);
-  }
-}
-
-// === PROJECTS ===
-async function loadProjects() {
-  try {
-    const resp = await fetch('/api/projects');
-    const data = await resp.json();
-    const list = document.getElementById('projList');
-    const projects = data.projects || [];
-
-    document.getElementById('projCnt').textContent = projects.length;
-    list.innerHTML = '';
-
-    if(projects.length === 0) {
-      list.innerHTML = '<div style="padding:8px;font-size:.65rem;color:var(--t3)">Нет проектов</div>';
-      return;
-    }
-
-    projects.forEach(p => {
-      const div = document.createElement('div');
-      div.className = 'proj-item';
-      div.innerHTML = `
-        <div class="dot" style="background:${p.status==='active'?'var(--green)':'var(--t3)'}"></div>
-        <div class="pname">${p.name}</div>
-        <div class="prev">$${p.revenue||0}</div>
-      `;
-      list.appendChild(div);
-    });
-  } catch(e) {
-    console.log('Projects error:', e);
-  }
-}
-
-function openNewProject() {
-  document.getElementById('modalNewProject').classList.add('on');
-}
-
-function closeModal(id) {
-  document.getElementById(id).classList.remove('on');
-}
-
-async function createProject() {
-  const name = document.getElementById('npName').value.trim();
-  const desc = document.getElementById('npDesc').value.trim();
-  const mon = document.getElementById('npMon').value.trim();
-
-  if(!name) return alert('Введите название');
-
-  try {
-    await fetch('/api/projects', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({name, description:desc, monetization:mon})
-    });
-    closeModal('modalNewProject');
-    document.getElementById('npName').value = '';
-    document.getElementById('npDesc').value = '';
-    document.getElementById('npMon').value = '';
+    // MISSION
+    renderMission(mission);
+    // ACHIEVEMENTS
+    renderAch(ach);
+    // PROJECTS
     loadProjects();
-    loadStats();
-  } catch(e) {
-    alert('Ошибка создания проекта');
-  }
-}
-
-// === QUESTS ===
-async function loadQuests() {
-  try {
-    const resp = await fetch('/api/quests');
-    const data = await resp.json();
-    const list = document.getElementById('questList');
-    const quests = data.quests || [];
-
-    if(quests.length === 0) {
-      list.innerHTML = `
-        <div class="quest-card">
-          <div class="quest-name">Нет активных квестов</div>
-          <div style="font-size:.65rem;color:var(--t3)">Создавай проекты чтобы получать квесты</div>
-        </div>`;
-      return;
-    }
-
-    list.innerHTML = '';
-    quests.filter(q => !q.completed).slice(0,5).forEach(q => {
-      const tasks = q.tasks || [];
-      const done = tasks.filter(t => t.done).length;
-      const total = tasks.length || 1;
-      const pct = Math.round((done/total)*100);
-      const pClass = q.priority === 'urgent' ? 'urgent' : 'normal';
-
-      let tasksHtml = '';
-      tasks.forEach((t,i) => {
-        tasksHtml += `
-          <div class="quest-task ${t.done?'done':''}" onclick="toggleTask('${q.id}',${i})">
-            <div class="check">${t.done?'✓':''}</div>
-            <span class="task-text">${t.text||t}</span>
-          </div>`;
-      });
-
-      const div = document.createElement('div');
-      div.className = 'quest-card';
-      div.innerHTML = `
-        <div class="quest-top">
-          <span class="quest-priority ${pClass}">${q.priority==='urgent'?'🔥 Срочно':'📋 Обычный'}</span>
-          <span class="quest-xp">+${q.xp_reward||100} XP</span>
-        </div>
-        <div class="quest-name">${q.name}</div>
-        ${tasksHtml}
-        <div class="quest-progress">
-          <div class="quest-bar"><div class="quest-fill" style="width:${pct}%"></div></div>
-          <span class="quest-pct">${done}/${total}</span>
-        </div>
-      `;
-      list.appendChild(div);
-    });
-  } catch(e) {
-    console.log('Quests error:', e);
-  }
-}
-
-async function toggleTask(questId, taskIdx) {
-  try {
-    const resp = await fetch('/api/quests');
-    const data = await resp.json();
-    const quest = (data.quests||[]).find(q => q.id === questId);
-    if(!quest) return;
-
-    quest.tasks[taskIdx].done = !quest.tasks[taskIdx].done;
-    const allDone = quest.tasks.every(t => t.done);
-
-    await fetch('/api/quests/'+questId, {
-      method:'PUT',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({tasks:quest.tasks, completed:allDone})
-    });
+    // QUESTS
     loadQuests();
-    loadStats();
-  } catch(e) {
-    console.log('Toggle error:', e);
-  }
+  }catch(e){console.log('Load err:',e)}
 }
 
-// === NICHES ===
-function renderNiches() {
-  const grid = document.getElementById('nicheGrid');
-  grid.innerHTML = '';
-  NICHES.forEach(n => {
-    const div = document.createElement('div');
-    div.className = 'niche-card';
-    div.onclick = () => analyzeNiche(n.title);
-    div.innerHTML = `
-      <div class="nc-top">
-        <span style="font-size:.6rem;color:var(--t3)">🔍 Идея</span>
-        <span class="nc-score">${n.score}</span>
-      </div>
-      <div class="nc-title">${n.title}</div>
-      <div class="nc-desc">${n.desc}</div>
-      <div class="nc-metrics">
-        <div class="nc-m"><div class="nc-mv">${n.tam}</div><div class="nc-ml">TAM</div></div>
-        <div class="nc-m"><div class="nc-mv">${n.comp}</div><div class="nc-ml">Конкуренция</div></div>
-        <div class="nc-m"><div class="nc-mv">${n.mvp}</div><div class="nc-ml">MVP</div></div>
-      </div>
-    `;
-    grid.appendChild(div);
+function renderMission(m){
+  const b=document.getElementById('missionBlock');
+  if(!m||!m.tasks){b.innerHTML='<div style="text-align:center;color:var(--t3);font-size:.7rem">Загрузка миссии...</div>';return}
+  const done=m.tasks.filter(t=>t.done).length,total=m.tasks.length,pct=total?Math.round(done/total*100):0;
+  let end='';
+  try{const d=new Date(m.week_end);const now=new Date();const diff=Math.max(0,Math.ceil((d-now)/(1000*60*60*24)));end=diff+'д'}catch(e){end='—'}
+  let tasks='';
+  m.tasks.forEach((t,i)=>{
+    tasks+=`<div class="mt ${t.done?'done':''}" onclick="toggleMission(${i})"><div class="ch">${t.done?'✓':''}</div><span class="tx">${t.text}</span></div>`
   });
+  b.innerHTML=`<div class="mission-top"><div style="display:flex;align-items:center"><span class="mission-badge">🎯 Миссия недели</span>
+    <span class="mission-name">${m.name}</span></div><div class="mission-timer">⏱ ${end}</div></div>
+    <div class="mission-bar"><div class="mission-fill" style="width:${pct}%"></div></div>
+    <div class="mission-tasks">${tasks}</div>`
 }
 
-async function analyzeNiche(niche) {
-  document.getElementById('modalNiche').classList.add('on');
-  document.getElementById('nicheResult').textContent = '⏳ Анализирую нишу: ' + niche + '...\n\nЭто может занять 10-30 секунд...';
+async function toggleMission(idx){
+  try{await fetch('/api/mission/toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({index:idx})});load()}catch(e){}
+}
 
-  try {
-    const resp = await fetch('/api/analyze-niche', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({niche:niche, description:''})
-    });
-    const data = await resp.json();
-    document.getElementById('nicheResult').textContent = data.analysis || data.error || 'Ошибка';
-  } catch(e) {
-    document.getElementById('nicheResult').textContent = '❌ Ошибка соединения';
-  }
+function renderAch(list){
+  const g=document.getElementById('achList');g.innerHTML='';
+  (list||[]).forEach(a=>{
+    const d=document.createElement('div');d.className='ach '+(a.unlocked?'ul':'lk');
+    d.innerHTML=`<div class="ai">${a.icon}</div><div class="an">${a.name}</div>`;
+    d.title=a.desc;g.appendChild(d)
+  })
+}
+
+async function loadProjects(){
+  try{
+    const r=await fetch('/api/projects');const d=await r.json();
+    const list=document.getElementById('projList'),projects=(d.projects||[]).filter(p=>p.status==='active');
+    document.getElementById('pCnt').textContent=projects.length;
+    list.innerHTML='';
+    if(!projects.length){list.innerHTML='<div style="padding:6px;font-size:.6rem;color:var(--t3)">Нет проектов</div>';return}
+    projects.forEach(p=>{
+      const d=document.createElement('div');d.className='pi';
+      d.innerHTML=`<div class="dt" style="background:var(--green)"></div><div class="pn">${p.name}</div><div class="pr">$${p.revenue||0}</div>`;
+      d.onclick=()=>{revProjId=p.id;openM('mRevenue')};
+      list.appendChild(d)
+    })
+  }catch(e){}
+}
+
+async function loadQuests(){
+  try{
+    const r=await fetch('/api/quests');const d=await r.json();
+    const list=document.getElementById('questList'),quests=(d.quests||[]).filter(q=>!q.completed).slice(0,5);
+    list.innerHTML='';
+    if(!quests.length){list.innerHTML='<div class="qc"><div class="qn" style="font-size:.65rem;color:var(--t3)">Создай проект — квесты появятся автоматически</div></div>';return}
+    quests.forEach(q=>{
+      const tasks=q.tasks||[],done=tasks.filter(t=>t.done).length,total=tasks.length||1,pct=Math.round(done/total*100);
+      let th='';tasks.forEach((t,i)=>{
+        th+=`<div class="qt ${t.done?'done':''}" onclick="toggleTask('${q.id}',${i})"><div class="qch">${t.done?'✓':''}</div><span class="qtx">${t.text||t}</span></div>`
+      });
+      // Найдём имя проекта
+      let projName=q.project_id?'':'';
+      const div=document.createElement('div');div.className='qc';
+      div.innerHTML=`<div class="qc-top"><span class="qp ${q.priority==='urgent'?'urg':'nrm'}">${q.priority==='urgent'?'🔥 Срочно':'📋 Обычный'}</span>
+        <span class="qxp">+${q.xp_reward||100} XP</span></div>
+        <div class="qn">${q.name}</div>${th}
+        <div class="qprog"><div class="qbar"><div class="qfill" style="width:${pct}%"></div></div><span class="qpct">${done}/${total}</span></div>`;
+      list.appendChild(div)
+    })
+  }catch(e){}
+}
+
+async function toggleTask(qid,idx){
+  try{
+    const r=await fetch('/api/quests');const d=await r.json();
+    const q=(d.quests||[]).find(x=>x.id===qid);if(!q)return;
+    q.tasks[idx].done=!q.tasks[idx].done;
+    const allDone=q.tasks.every(t=>t.done);
+    await fetch('/api/quests/'+qid,{method:'PUT',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({tasks:q.tasks,completed:allDone})});
+    if(allDone)showXP(`+${q.xp_reward||100} XP`);
+    load()
+  }catch(e){}
+}
+
+// MODALS
+function openM(id){document.getElementById(id).classList.add('on')}
+function closeM(id){document.getElementById(id).classList.remove('on')}
+
+async function createProj(){
+  const n=document.getElementById('npN').value.trim();
+  if(!n)return alert('Введите название');
+  try{
+    await fetch('/api/projects',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({name:n,description:document.getElementById('npD').value,monetization:document.getElementById('npM').value})});
+    closeM('mNew');document.getElementById('npN').value='';document.getElementById('npD').value='';document.getElementById('npM').value='';
+    showXP('+100 XP');
+    // Ждём генерации квестов
+    setTimeout(load,3000);load()
+  }catch(e){alert('Ошибка')}
+}
+
+async function addRevenue(){
+  const amt=parseInt(document.getElementById('revAmt').value)||0;
+  if(!amt||!revProjId)return;
+  try{
+    await fetch(`/api/projects/${revProjId}/revenue`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({amount:amt})});
+    closeM('mRevenue');document.getElementById('revAmt').value='';showXP('+50 XP');load()
+  }catch(e){alert('Ошибка')}
+}
+
+async function analyzeNiche(niche){
+  openM('mNiche');document.getElementById('nicheRes').textContent='⏳ Анализирую: '+niche+'...\n\n10-30 секунд...';
+  try{
+    const r=await fetch('/api/analyze-niche',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({niche})});
+    const d=await r.json();document.getElementById('nicheRes').textContent=d.analysis||d.error||'Ошибка';showXP('+50 XP');load()
+  }catch(e){document.getElementById('nicheRes').textContent='❌ Ошибка'}
 }
 </script>
 </body>
