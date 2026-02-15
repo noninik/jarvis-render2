@@ -203,4 +203,824 @@ def create_voice(text):
             loop.close()
         if os.path.exists(mp3_path) and os.path.getsize(mp3_path) > 100:
             try:
-                result = subprocess.run(["ffmpeg", "-y", "-i", mp3_path, "-c:a", 
+                result = subprocess.run(["ffmpeg", "-y", "-i", mp3_path, "-c:a", "libopus", "-b:a", "64k", ogg_path], timeout=30, capture_output=True)
+                if result.returncode == 0 and os.path.exists(ogg_path) and os.path.getsize(ogg_path) > 100:
+                    os.remove(mp3_path)
+                    return ogg_path
+            except:
+                pass
+            if os.path.exists(ogg_path):
+                os.remove(ogg_path)
+            return mp3_path
+    except:
+        pass
+    for p in [mp3_path, ogg_path]:
+        if os.path.exists(p):
+            os.remove(p)
+    try:
+        from gtts import gTTS
+        fallback_path = f"/tmp/voice_{file_id}_gtts.mp3"
+        tts = gTTS(text=text, lang='ru')
+        tts.save(fallback_path)
+        if os.path.exists(fallback_path) and os.path.getsize(fallback_path) > 100:
+            return fallback_path
+    except:
+        pass
+    return None
+
+
+def call_ai(system_prompt, user_message, context):
+    messages = [{"role": "system", "content": system_prompt}]
+    for msg in context[-10:]:
+        role = "user" if msg["role"] == "user" else "assistant"
+        messages.append({"role": role, "content": msg["text"]})
+    messages.append({"role": "user", "content": user_message})
+    try:
+        resp = requests.post(GROQ_URL, headers={
+            "Authorization": "Bearer " + GROQ_API_KEY,
+            "Content-Type": "application/json",
+        }, json={
+            "model": GROQ_MODEL, "messages": messages,
+            "temperature": 0.9, "max_tokens": 3000,
+        }, timeout=60)
+        if resp.status_code != 200:
+            return "AI временно недоступен."
+        return resp.json()["choices"][0]["message"]["content"]
+    except:
+        return "Ошибка соединения с AI."
+
+
+# ─── Telegram API ───
+
+def send_msg(chat_id, text, reply_kb=None, inline_kb=None):
+    url = "https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendMessage"
+    sent_ids = []
+    while text:
+        chunk = text[:4000]
+        text = text[4000:]
+        payload = {"chat_id": chat_id, "text": chunk}
+        if not text and inline_kb:
+            payload["reply_markup"] = inline_kb
+        try:
+            resp = requests.post(url, json=payload, timeout=30)
+            if resp.status_code == 200:
+                msg_id = resp.json().get("result", {}).get("message_id")
+                if msg_id:
+                    sent_ids.append(msg_id)
+        except:
+            pass
+    if reply_kb:
+        send_reply_kb(chat_id, reply_kb)
+    return sent_ids
+
+
+def send_reply_kb(chat_id, reply_kb):
+    try:
+        resp = requests.post(
+            "https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendMessage",
+            json={"chat_id": chat_id, "text": "⌨️", "reply_markup": reply_kb},
+            timeout=30
+        )
+        if resp.status_code == 200:
+            msg_id = resp.json().get("result", {}).get("message_id")
+            if msg_id:
+                threading.Thread(target=delete_msg_delayed, args=(chat_id, msg_id, 1), daemon=True).start()
+    except:
+        pass
+
+
+def delete_msg(chat_id, message_id):
+    try:
+        requests.post("https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/deleteMessage",
+                       json={"chat_id": chat_id, "message_id": message_id}, timeout=10)
+    except:
+        pass
+
+
+def delete_msg_delayed(chat_id, message_id, delay):
+    time.sleep(delay)
+    delete_msg(chat_id, message_id)
+
+
+def edit_msg(chat_id, message_id, text, inline_kb=None):
+    payload = {"chat_id": chat_id, "message_id": message_id, "text": text[:4000]}
+    if inline_kb:
+        payload["reply_markup"] = inline_kb
+    try:
+        requests.post("https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/editMessageText",
+                       json=payload, timeout=30)
+    except:
+        pass
+
+
+def send_photo(chat_id, file_path, caption=""):
+    try:
+        if file_path and os.path.exists(file_path):
+            with open(file_path, "rb") as f:
+                resp = requests.post("https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendPhoto",
+                    data={"chat_id": chat_id, "caption": caption[:1000]},
+                    files={"photo": ("image.jpg", f, "image/jpeg")}, timeout=60)
+                if resp.status_code == 200:
+                    return
+        send_msg(chat_id, "❌ Не удалось сгенерировать картинку.")
+    except:
+        send_msg(chat_id, "❌ Ошибка отправки фото.")
+    finally:
+        if file_path and os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+            except:
+                pass
+
+
+def send_voice(chat_id, file_path):
+    try:
+        if file_path and os.path.exists(file_path):
+            with open(file_path, "rb") as f:
+                if file_path.endswith(".ogg"):
+                    resp = requests.post("https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendVoice",
+                        data={"chat_id": chat_id}, files={"voice": f}, timeout=30)
+                else:
+                    resp = requests.post("https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendAudio",
+                        data={"chat_id": chat_id, "title": "Озвучка"}, files={"audio": f}, timeout=30)
+                if resp.status_code != 200:
+                    send_msg(chat_id, "❌ Не удалось отправить голосовое.")
+        else:
+            send_msg(chat_id, "❌ Не удалось создать голосовое.")
+    except:
+        send_msg(chat_id, "❌ Ошибка отправки голосового.")
+    finally:
+        if file_path and os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+            except:
+                pass
+
+
+def send_typing(chat_id):
+    try:
+        requests.post("https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendChatAction",
+                       json={"chat_id": chat_id, "action": "typing"}, timeout=10)
+    except:
+        pass
+
+
+def answer_cb(callback_id, text=""):
+    try:
+        requests.post("https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/answerCallbackQuery",
+                       json={"callback_query_id": callback_id, "text": text}, timeout=10)
+    except:
+        pass
+
+
+# ─── Reply клавиатуры (внизу) ───
+
+def main_reply_kb():
+    return {"keyboard": [
+        ["💬 Помощник", "📊 Бизнес", "✍️ Контент"],
+        ["💻 Код", "📋 Стартап", "🔍 Исследование"],
+        ["🚀 Автоматизация", "📝 Копирайтинг"],
+        ["🎯 Коуч", "🌍 Переводчик"],
+        ["📦 Шаблоны", "🛠 Инструменты"],
+        ["📌 Избранное", "📝 Заметки", "📊 Статистика"],
+    ], "resize_keyboard": True}
+
+
+def templates_reply_kb():
+    return {"keyboard": [
+        ["📋 Бизнес-план", "📅 Контент-план"],
+        ["🔍 Анализ конкурентов", "📄 Резюме"],
+        ["✍️ Пак постов", "🌐 Текст лендинга"],
+        ["📧 Email-цепочка", "📊 SWOT-анализ"],
+        ["⬅️ Назад в меню"],
+    ], "resize_keyboard": True}
+
+
+def tools_reply_kb():
+    return {"keyboard": [
+        ["🔍 Поиск", "🌐 Парсинг сайта"],
+        ["🖼 Генерация фото", "🎙 Озвучка текста"],
+        ["📝 Суммаризация"],
+        ["🇬🇧→🇷🇺 Перевод EN-RU", "🇷🇺→🇬🇧 Перевод RU-EN"],
+        ["🗑 Очистить контекст"],
+        ["⬅️ Назад в меню"],
+    ], "resize_keyboard": True}
+
+
+def after_reply_kb():
+    return {"keyboard": [
+        ["🔄 Подробнее", "✏️ Переписать"],
+        ["📋 Список", "🎯 Пример"],
+        ["🖼 Нарисовать", "🎙 Озвучить"],
+        ["📌 В избранное", "📝 В заметки"],
+        ["🏠 Меню"],
+    ], "resize_keyboard": True}
+
+
+# ─── Inline клавиатуры (в сообщениях) ───
+
+def main_inline_kb():
+    return {"inline_keyboard": [
+        [{"text": "💬 Помощник", "callback_data": "mode_helper"}, {"text": "📊 Бизнес", "callback_data": "mode_business"}],
+        [{"text": "✍️ Контент", "callback_data": "mode_content"}, {"text": "💻 Код", "callback_data": "mode_coder"}],
+        [{"text": "📋 Стартап", "callback_data": "mode_startup"}, {"text": "🔍 Исследование", "callback_data": "mode_research"}],
+        [{"text": "🚀 Автоматизация", "callback_data": "mode_automate"}, {"text": "📝 Копирайтинг", "callback_data": "mode_copywriter"}],
+        [{"text": "🎯 Коуч", "callback_data": "mode_coach"}, {"text": "🌍 Переводчик", "callback_data": "mode_translator"}],
+        [{"text": "📦 Шаблоны", "callback_data": "show_templates"}, {"text": "🛠 Инструменты", "callback_data": "show_tools"}],
+        [{"text": "📌 Избранное", "callback_data": "show_favs"}, {"text": "📝 Заметки", "callback_data": "show_notes"}],
+    ]}
+
+
+def tpl_inline_kb():
+    return {"inline_keyboard": [
+        [{"text": "📋 Бизнес-план", "callback_data": "tpl_biz_plan"}],
+        [{"text": "📅 Контент-план", "callback_data": "tpl_content_plan"}],
+        [{"text": "🔍 Конкуренты", "callback_data": "tpl_competitor"}],
+        [{"text": "📄 Резюме", "callback_data": "tpl_resume"}],
+        [{"text": "✍️ Пак постов", "callback_data": "tpl_post_pack"}],
+        [{"text": "🌐 Лендинг", "callback_data": "tpl_landing"}],
+        [{"text": "📧 Email-цепочка", "callback_data": "tpl_email_chain"}],
+        [{"text": "📊 SWOT", "callback_data": "tpl_swot"}],
+        [{"text": "⬅️ Назад", "callback_data": "back_main"}],
+    ]}
+
+
+def tools_inline_kb():
+    return {"inline_keyboard": [
+        [{"text": "🔍 Поиск", "callback_data": "tool_search"}, {"text": "🌐 Парсинг", "callback_data": "tool_parse"}],
+        [{"text": "🖼 Картинка", "callback_data": "tool_image"}, {"text": "🎙 Голос", "callback_data": "tool_voice"}],
+        [{"text": "📝 Суммаризация", "callback_data": "tool_summarize"}],
+        [{"text": "🇬🇧→🇷🇺", "callback_data": "tool_enru"}, {"text": "🇷🇺→🇬🇧", "callback_data": "tool_ruen"}],
+        [{"text": "🗑 Очистить", "callback_data": "tool_clear"}],
+        [{"text": "⬅️ Назад", "callback_data": "back_main"}],
+    ]}
+
+
+def after_inline_kb():
+    return {"inline_keyboard": [
+        [{"text": "🔄 Подробнее", "callback_data": "act_more"}, {"text": "✏️ Переписать", "callback_data": "act_rewrite"}],
+        [{"text": "📋 Список", "callback_data": "act_list"}, {"text": "🎯 Пример", "callback_data": "act_example"}],
+        [{"text": "🖼 Картинка", "callback_data": "act_image"}, {"text": "🎙 Озвучить", "callback_data": "act_voice"}],
+        [{"text": "📌 В избранное", "callback_data": "act_fav"}, {"text": "📝 В заметки", "callback_data": "act_note"}],
+        [{"text": "🏠 Меню", "callback_data": "back_main"}],
+    ]}
+
+
+# ─── Callback (inline кнопки) ───
+
+def handle_callback(cb):
+    chat_id = cb["message"]["chat"]["id"]
+    cb_id = cb["id"]
+    data = cb["data"]
+    old_msg_id = cb["message"]["message_id"]
+
+    if data.startswith("mode_"):
+        mode_key = data[5:]
+        if mode_key in MODES:
+            set_user(chat_id, "mode", mode_key)
+            set_user(chat_id, "context", [])
+            set_user(chat_id, "waiting", "")
+            m = MODES[mode_key]
+            answer_cb(cb_id, m["name"])
+            delete_msg(chat_id, old_msg_id)
+            send_msg(chat_id, m["emoji"] + " Режим: " + m["name"] + "\n\nЗадавай вопросы!",
+                     reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
+
+    elif data == "show_templates":
+        answer_cb(cb_id)
+        edit_msg(chat_id, old_msg_id, "📦 Шаблоны:", tpl_inline_kb())
+        send_reply_kb(chat_id, templates_reply_kb())
+
+    elif data.startswith("tpl_"):
+        key = data[4:]
+        if key in TEMPLATES:
+            answer_cb(cb_id, TEMPLATES[key]["name"])
+            delete_msg(chat_id, old_msg_id)
+            send_typing(chat_id)
+            update_stats(chat_id)
+            answer = call_ai(get_mode_prompt(chat_id), TEMPLATES[key]["prompt"], get_context(chat_id))
+            add_context(chat_id, "user", TEMPLATES[key]["prompt"])
+            add_context(chat_id, "assistant", answer)
+            send_msg(chat_id, answer, reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
+
+    elif data == "show_tools":
+        answer_cb(cb_id)
+        edit_msg(chat_id, old_msg_id, "🛠 Инструменты:", tools_inline_kb())
+        send_reply_kb(chat_id, tools_reply_kb())
+
+    elif data == "tool_search":
+        answer_cb(cb_id)
+        delete_msg(chat_id, old_msg_id)
+        set_user(chat_id, "waiting", "search")
+        send_msg(chat_id, "🔍 Напиши запрос:")
+
+    elif data == "tool_parse":
+        answer_cb(cb_id)
+        delete_msg(chat_id, old_msg_id)
+        set_user(chat_id, "waiting", "parse")
+        send_msg(chat_id, "🌐 Отправь ссылку:")
+
+    elif data == "tool_image":
+        answer_cb(cb_id)
+        delete_msg(chat_id, old_msg_id)
+        set_user(chat_id, "waiting", "image")
+        send_msg(chat_id, "🖼 Опиши что нарисовать:")
+
+    elif data == "tool_voice":
+        answer_cb(cb_id)
+        delete_msg(chat_id, old_msg_id)
+        set_user(chat_id, "waiting", "voice")
+        send_msg(chat_id, "🎙 Напиши текст:")
+
+    elif data == "tool_summarize":
+        answer_cb(cb_id)
+        delete_msg(chat_id, old_msg_id)
+        set_user(chat_id, "waiting", "summarize")
+        send_msg(chat_id, "📝 Отправь текст:")
+
+    elif data == "tool_enru":
+        answer_cb(cb_id)
+        delete_msg(chat_id, old_msg_id)
+        set_user(chat_id, "waiting", "enru")
+        send_msg(chat_id, "🇬🇧→🇷🇺 Текст:")
+
+    elif data == "tool_ruen":
+        answer_cb(cb_id)
+        delete_msg(chat_id, old_msg_id)
+        set_user(chat_id, "waiting", "ruen")
+        send_msg(chat_id, "🇷🇺→🇬🇧 Текст:")
+
+    elif data == "tool_clear":
+        answer_cb(cb_id, "Очищено!")
+        set_user(chat_id, "context", [])
+        edit_msg(chat_id, old_msg_id, "🗑 Очищено!", main_inline_kb())
+        send_reply_kb(chat_id, main_reply_kb())
+
+    elif data == "act_more":
+        answer_cb(cb_id)
+        delete_msg(chat_id, old_msg_id)
+        send_typing(chat_id)
+        answer = call_ai(get_mode_prompt(chat_id), "Подробнее. Деталей, цифр, примеров.", get_context(chat_id))
+        add_context(chat_id, "user", "Подробнее")
+        add_context(chat_id, "assistant", answer)
+        send_msg(chat_id, answer, inline_kb=after_inline_kb())
+
+    elif data == "act_rewrite":
+        answer_cb(cb_id)
+        delete_msg(chat_id, old_msg_id)
+        send_typing(chat_id)
+        answer = call_ai(get_mode_prompt(chat_id), "Перепиши лучше.", get_context(chat_id))
+        add_context(chat_id, "user", "Переписать")
+        add_context(chat_id, "assistant", answer)
+        send_msg(chat_id, answer, inline_kb=after_inline_kb())
+
+    elif data == "act_list":
+        answer_cb(cb_id)
+        delete_msg(chat_id, old_msg_id)
+        send_typing(chat_id)
+        answer = call_ai(get_mode_prompt(chat_id), "Оформи списком.", get_context(chat_id))
+        add_context(chat_id, "user", "Списком")
+        add_context(chat_id, "assistant", answer)
+        send_msg(chat_id, answer, inline_kb=after_inline_kb())
+
+    elif data == "act_example":
+        answer_cb(cb_id)
+        delete_msg(chat_id, old_msg_id)
+        send_typing(chat_id)
+        answer = call_ai(get_mode_prompt(chat_id), "Пример с цифрами.", get_context(chat_id))
+        add_context(chat_id, "user", "Пример")
+        add_context(chat_id, "assistant", answer)
+        send_msg(chat_id, answer, inline_kb=after_inline_kb())
+
+    elif data == "act_image":
+        answer_cb(cb_id)
+        delete_msg(chat_id, old_msg_id)
+        send_typing(chat_id)
+        prompt = call_ai("Отвечай ТОЛЬКО промтом без кавычек.", "Короткий промт на английском для картинки по теме последнего сообщения. Максимум 10 слов.", get_context(chat_id))
+        prompt = prompt.strip().strip('"').strip("'").strip("`")[:200]
+        send_msg(chat_id, f"🎨 Генерирую: {prompt}\n⏳ Подожди...")
+        img_path = generate_image(prompt)
+        send_photo(chat_id, img_path, "🖼 " + prompt)
+
+    elif data == "act_voice":
+        answer_cb(cb_id)
+        delete_msg(chat_id, old_msg_id)
+        send_typing(chat_id)
+        ctx = get_context(chat_id)
+        if not ctx:
+            send_msg(chat_id, "❌ Нечего озвучивать.")
+            return
+        send_msg(chat_id, "🎙 Создаю голосовое...")
+        voice_path = create_voice(ctx[-1]["text"][:500])
+        if voice_path:
+            send_voice(chat_id, voice_path)
+        else:
+            send_msg(chat_id, "❌ Не удалось создать голосовое.")
+
+    elif data == "act_fav":
+        answer_cb(cb_id, "📌 Добавлено!")
+        ctx = get_context(chat_id)
+        if ctx:
+            add_favorite(chat_id, ctx[-1]["text"])
+
+    elif data == "act_note":
+        answer_cb(cb_id, "📝 Сохранено!")
+        ctx = get_context(chat_id)
+        if ctx:
+            add_note(chat_id, ctx[-1]["text"])
+
+    elif data == "show_favs":
+        answer_cb(cb_id)
+        favs = get_favorites(chat_id)
+        if favs:
+            t = "📌 Избранное:\n\n"
+            for i, f in enumerate(favs[-10:], 1):
+                t += f"{i}. [{f['date']}]\n{f['text'][:200]}\n\n"
+            edit_msg(chat_id, old_msg_id, t, main_inline_kb())
+        else:
+            edit_msg(chat_id, old_msg_id, "📌 Пусто.", main_inline_kb())
+
+    elif data == "show_notes":
+        answer_cb(cb_id)
+        notes = get_notes(chat_id)
+        if notes:
+            t = "📝 Заметки:\n\n"
+            for i, n in enumerate(notes[-10:], 1):
+                t += f"{i}. [{n['date']}]\n{n['text'][:200]}\n\n"
+            edit_msg(chat_id, old_msg_id, t, main_inline_kb())
+        else:
+            edit_msg(chat_id, old_msg_id, "📝 Пусто. /note текст", main_inline_kb())
+
+    elif data == "back_main":
+        answer_cb(cb_id)
+        mode = get_user(chat_id, "mode", DEFAULT_MODE)
+        edit_msg(chat_id, old_msg_id, "🤖 Jarvis 2.0 | " + MODES.get(mode, MODES[DEFAULT_MODE])["name"], main_inline_kb())
+        send_reply_kb(chat_id, main_reply_kb())
+
+
+# ─── Обработчик текста ───
+
+def handle_message(chat_id, text):
+    text = text.strip()
+
+    if text in ["/start", "/menu", "🏠 Меню", "⬅️ Назад в меню"]:
+        send_msg(chat_id, "🤖 Jarvis AI Agent 2.0\n\nВыбери режим или напиши вопрос:",
+                 reply_kb=main_reply_kb(), inline_kb=main_inline_kb())
+        return
+
+    if text.startswith("/note "):
+        note_text = text[6:].strip()
+        if note_text:
+            add_note(chat_id, note_text)
+            send_msg(chat_id, "📝 Сохранено!")
+        return
+
+    if text in ["/stats", "📊 Статистика"]:
+        stats = get_stats(chat_id)
+        msg = f"📊 Статистика:\n\nСообщений: {stats.get('messages', 0)}\n\nРежимы:\n"
+        for m, count in stats.get("modes", {}).items():
+            msg += f"  {MODES.get(m, {'name': m})['name']}: {count}\n"
+        send_msg(chat_id, msg)
+        return
+
+    if text in MODE_BUTTONS:
+        mode_key = MODE_BUTTONS[text]
+        set_user(chat_id, "mode", mode_key)
+        set_user(chat_id, "context", [])
+        set_user(chat_id, "waiting", "")
+        m = MODES[mode_key]
+        send_msg(chat_id, m["emoji"] + " Режим: " + m["name"] + "\n\nЗадавай вопросы!",
+                 reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
+        return
+
+    if text == "📦 Шаблоны":
+        send_msg(chat_id, "📦 Шаблоны:", reply_kb=templates_reply_kb(), inline_kb=tpl_inline_kb())
+        return
+
+    if text in TEMPLATE_BUTTONS:
+        key = TEMPLATE_BUTTONS[text]
+        send_typing(chat_id)
+        update_stats(chat_id)
+        answer = call_ai(get_mode_prompt(chat_id), TEMPLATES[key]["prompt"], get_context(chat_id))
+        add_context(chat_id, "user", TEMPLATES[key]["prompt"])
+        add_context(chat_id, "assistant", answer)
+        send_msg(chat_id, answer, reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
+        return
+
+    if text == "🛠 Инструменты":
+        send_msg(chat_id, "🛠 Инструменты:", reply_kb=tools_reply_kb(), inline_kb=tools_inline_kb())
+        return
+
+    if text == "🔍 Поиск":
+        set_user(chat_id, "waiting", "search")
+        send_msg(chat_id, "🔍 Запрос:")
+        return
+    if text == "🌐 Парсинг сайта":
+        set_user(chat_id, "waiting", "parse")
+        send_msg(chat_id, "🌐 Ссылка:")
+        return
+    if text == "🖼 Генерация фото":
+        set_user(chat_id, "waiting", "image")
+        send_msg(chat_id, "🖼 Опиши:")
+        return
+    if text == "🎙 Озвучка текста":
+        set_user(chat_id, "waiting", "voice")
+        send_msg(chat_id, "🎙 Текст:")
+        return
+    if text == "📝 Суммаризация":
+        set_user(chat_id, "waiting", "summarize")
+        send_msg(chat_id, "📝 Текст:")
+        return
+    if text == "🇬🇧→🇷🇺 Перевод EN-RU":
+        set_user(chat_id, "waiting", "enru")
+        send_msg(chat_id, "🇬🇧→🇷🇺 Текст:")
+        return
+    if text == "🇷🇺→🇬🇧 Перевод RU-EN":
+        set_user(chat_id, "waiting", "ruen")
+        send_msg(chat_id, "🇷🇺→🇬🇧 Текст:")
+        return
+    if text == "🗑 Очистить контекст":
+        set_user(chat_id, "context", [])
+        send_msg(chat_id, "🗑 Очищено!", reply_kb=main_reply_kb())
+        return
+
+    if text == "📌 Избранное":
+        favs = get_favorites(chat_id)
+        if favs:
+            msg = "📌 Избранное:\n\n"
+            for i, f in enumerate(favs[-10:], 1):
+                msg += f"{i}. [{f['date']}]\n{f['text'][:200]}\n\n"
+            send_msg(chat_id, msg)
+        else:
+            send_msg(chat_id, "📌 Пусто.")
+        return
+
+    if text == "📝 Заметки":
+        notes = get_notes(chat_id)
+        if notes:
+            msg = "📝 Заметки:\n\n"
+            for i, n in enumerate(notes[-10:], 1):
+                msg += f"{i}. [{n['date']}]\n{n['text'][:200]}\n\n"
+            send_msg(chat_id, msg)
+        else:
+            send_msg(chat_id, "📝 Пусто. /note текст")
+        return
+
+    if text == "🔄 Подробнее":
+        send_typing(chat_id)
+        answer = call_ai(get_mode_prompt(chat_id), "Подробнее.", get_context(chat_id))
+        add_context(chat_id, "user", "Подробнее")
+        add_context(chat_id, "assistant", answer)
+        send_msg(chat_id, answer, inline_kb=after_inline_kb())
+        return
+    if text == "✏️ Переписать":
+        send_typing(chat_id)
+        answer = call_ai(get_mode_prompt(chat_id), "Перепиши лучше.", get_context(chat_id))
+        add_context(chat_id, "user", "Переписать")
+        add_context(chat_id, "assistant", answer)
+        send_msg(chat_id, answer, inline_kb=after_inline_kb())
+        return
+    if text == "📋 Список":
+        send_typing(chat_id)
+        answer = call_ai(get_mode_prompt(chat_id), "Оформи списком.", get_context(chat_id))
+        add_context(chat_id, "user", "Списком")
+        add_context(chat_id, "assistant", answer)
+        send_msg(chat_id, answer, inline_kb=after_inline_kb())
+        return
+    if text == "🎯 Пример":
+        send_typing(chat_id)
+        answer = call_ai(get_mode_prompt(chat_id), "Пример с цифрами.", get_context(chat_id))
+        add_context(chat_id, "user", "Пример")
+        add_context(chat_id, "assistant", answer)
+        send_msg(chat_id, answer, inline_kb=after_inline_kb())
+        return
+
+    if text == "🖼 Нарисовать":
+        send_typing(chat_id)
+        prompt = call_ai("Отвечай ТОЛЬКО промтом.", "Короткий промт на английском для картинки. 10 слов макс.", get_context(chat_id))
+        prompt = prompt.strip().strip('"').strip("'").strip("`")[:200]
+        send_msg(chat_id, f"🎨 {prompt}\n⏳ Подожди...")
+        img_path = generate_image(prompt)
+        send_photo(chat_id, img_path, "🖼 " + prompt)
+        return
+
+    if text == "🎙 Озвучить":
+        send_typing(chat_id)
+        ctx = get_context(chat_id)
+        if not ctx:
+            send_msg(chat_id, "❌ Нечего озвучивать.")
+            return
+        send_msg(chat_id, "🎙 Создаю...")
+        voice_path = create_voice(ctx[-1]["text"][:500])
+        if voice_path:
+            send_voice(chat_id, voice_path)
+        else:
+            send_msg(chat_id, "❌ Ошибка озвучки.")
+        return
+
+    if text == "📌 В избранное":
+        ctx = get_context(chat_id)
+        if ctx:
+            add_favorite(chat_id, ctx[-1]["text"])
+            send_msg(chat_id, "📌 Добавлено!")
+        else:
+            send_msg(chat_id, "❌ Пусто.")
+        return
+
+    if text == "📝 В заметки":
+        ctx = get_context(chat_id)
+        if ctx:
+            add_note(chat_id, ctx[-1]["text"])
+            send_msg(chat_id, "📝 Сохранено!")
+        else:
+            send_msg(chat_id, "❌ Пусто.")
+        return
+
+    # Waiting
+    waiting = get_user(chat_id, "waiting", "")
+
+    if waiting == "search":
+        set_user(chat_id, "waiting", "")
+        send_typing(chat_id)
+        update_stats(chat_id)
+        results = search_web(text)
+        answer = call_ai(get_mode_prompt(chat_id), "Поиск '" + text + "':\n\n" + results + "\n\nАнализ.", get_context(chat_id))
+        add_context(chat_id, "user", "Поиск: " + text)
+        add_context(chat_id, "assistant", answer)
+        send_msg(chat_id, "🔍 " + text + "\n\n" + answer, reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
+        return
+
+    if waiting == "parse":
+        set_user(chat_id, "waiting", "")
+        send_typing(chat_id)
+        update_stats(chat_id)
+        content = parse_website(text)
+        answer = call_ai(get_mode_prompt(chat_id), "Сайт " + text + ":\n\n" + content + "\n\nАнализ.", get_context(chat_id))
+        add_context(chat_id, "user", "Парсинг: " + text)
+        add_context(chat_id, "assistant", answer)
+        send_msg(chat_id, "🌐\n\n" + answer, reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
+        return
+
+    if waiting == "image":
+        set_user(chat_id, "waiting", "")
+        send_typing(chat_id)
+        send_msg(chat_id, f"🎨 {text}\n⏳ Подожди...")
+        img_path = generate_image(text)
+        send_photo(chat_id, img_path, "🖼 " + text[:200])
+        return
+
+    if waiting == "voice":
+        set_user(chat_id, "waiting", "")
+        send_typing(chat_id)
+        send_msg(chat_id, "🎙 Создаю...")
+        voice_path = create_voice(text[:500])
+        if voice_path:
+            send_voice(chat_id, voice_path)
+        else:
+            send_msg(chat_id, "❌ Ошибка озвучки.")
+        return
+
+    if waiting == "summarize":
+        set_user(chat_id, "waiting", "")
+        send_typing(chat_id)
+        update_stats(chat_id)
+        answer = call_ai("Суммаризатор.", "5 мыслей:\n\n" + text[:3000], [])
+        add_context(chat_id, "user", "Суммаризация")
+        add_context(chat_id, "assistant", answer)
+        send_msg(chat_id, "📝\n\n" + answer, reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
+        return
+
+    if waiting == "enru":
+        set_user(chat_id, "waiting", "")
+        send_typing(chat_id)
+        answer = call_ai("Переводчик.", "На русский:\n\n" + text, [])
+        send_msg(chat_id, "🇬🇧→🇷🇺\n\n" + answer, reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
+        return
+
+    if waiting == "ruen":
+        set_user(chat_id, "waiting", "")
+        send_typing(chat_id)
+        answer = call_ai("Переводчик.", "На английский:\n\n" + text, [])
+        send_msg(chat_id, "🇷🇺→🇬🇧\n\n" + answer, reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
+        return
+
+    if waiting == "newnote":
+        set_user(chat_id, "waiting", "")
+        add_note(chat_id, text)
+        send_msg(chat_id, "📝 Сохранено!")
+        return
+
+    # AI
+    send_typing(chat_id)
+    update_stats(chat_id)
+    answer = call_ai(get_mode_prompt(chat_id), text, get_context(chat_id))
+    add_context(chat_id, "user", text)
+    add_context(chat_id, "assistant", answer)
+    send_msg(chat_id, answer, reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
+
+
+# ─── Flask routes ───
+
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    data = request.get_json()
+    if "callback_query" in data:
+        try:
+            handle_callback(data["callback_query"])
+        except Exception as e:
+            print("CB error:", e)
+        return "ok"
+    message = data.get("message", {})
+    chat_id = message.get("chat", {}).get("id")
+    text = message.get("text", "")
+    if chat_id and text:
+        try:
+            handle_message(chat_id, text)
+        except Exception as e:
+            print("Msg error:", e)
+            send_msg(chat_id, "Ошибка.")
+    return "ok"
+
+
+@app.route("/", methods=["GET"])
+def home():
+    return "Jarvis 2.0 is running!"
+
+
+# ─── Веб-версия Jarvis ───
+
+web_sessions = {}
+
+def get_web_session(sid):
+    if sid not in web_sessions:
+        web_sessions[sid] = {"mode": "helper", "context": []}
+    return web_sessions[sid]
+
+@app.route("/chat")
+def web_chat():
+    return render_template("index.html")
+
+@app.route("/api/send", methods=["POST"])
+def api_send():
+    data = request.get_json()
+    sid = data.get("session_id", "")
+    text = data.get("text", "").strip()
+    if not sid or not text:
+        return json.dumps({"error": "empty"}), 400, {"Content-Type": "application/json"}
+    session = get_web_session(sid)
+    mode = session["mode"]
+    prompt = MODES.get(mode, MODES["helper"])["prompt"]
+    session["context"].append({"role": "user", "text": text[:1000]})
+    if len(session["context"]) > 20:
+        session["context"] = session["context"][-20:]
+    answer = call_ai(prompt, text, session["context"])
+    session["context"].append({"role": "assistant", "text": answer[:1000]})
+    if len(session["context"]) > 20:
+        session["context"] = session["context"][-20:]
+    return json.dumps({"answer": answer, "time": time.strftime("%H:%M")}, ensure_ascii=False), 200, {"Content-Type": "application/json"}
+
+@app.route("/api/mode", methods=["POST"])
+def api_mode():
+    data = request.get_json()
+    sid = data.get("session_id", "")
+    mode = data.get("mode", "helper")
+    if sid and mode in MODES:
+        session = get_web_session(sid)
+        session["mode"] = mode
+        session["context"] = []
+        return json.dumps({"ok": True}), 200, {"Content-Type": "application/json"}
+    return json.dumps({"error": "invalid"}), 400, {"Content-Type": "application/json"}
+
+@app.route("/api/clear", methods=["POST"])
+def api_clear():
+    data = request.get_json()
+    sid = data.get("session_id", "")
+    if sid and sid in web_sessions:
+        web_sessions[sid] = {"mode": "helper", "context": []}
+    return json.dumps({"ok": True}), 200, {"Content-Type": "application/json"}
+
+
+# ─── Запуск ───
+
+def setup_webhook():
+    if RENDER_URL:
+        url = "https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/setWebhook"
+        resp = requests.post(url, json={"url": RENDER_URL + "/webhook"}, timeout=10)
+        print("Webhook:", resp.json())
+
+
+def keep_alive():
+    while True:
+        time.sleep(600)
+        if RENDER_URL:
+            try:
+                requests.get(RENDER_URL, timeout=10)
+            except:
+                pass
+
+
+if __name__ == "__main__":
+    setup_webhook()
+    threading.Thread(target=keep_alive, daemon=True).start()
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
