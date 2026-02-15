@@ -1,4 +1,4 @@
-from flask import Flask, request, render_template
+from flask import Flask, request
 import os
 import json
 import requests
@@ -8,6 +8,7 @@ import subprocess
 import asyncio
 import urllib.parse
 import uuid
+import random
 from datetime import datetime, date, timedelta
 from pathlib import Path
 
@@ -18,8 +19,6 @@ GROQ_MODEL = "llama-3.3-70b-versatile"
 RENDER_URL = os.getenv("RENDER_URL", "")
 
 app = Flask(__name__)
-app.config['DEBUG'] = os.getenv("DEBUG", "false").lower() == "true"
-
 user_data = {}
 
 DATA_DIR = Path("data")
@@ -100,13 +99,38 @@ FUNNEL_NAMES = {
     "launch": "🚀 Запуск",
     "growth": "📈 Рост"
 }
-FUNNEL_XP = {
-    "idea": 0,
-    "validation": 200,
-    "mvp": 400,
-    "launch": 600,
-    "growth": 1000
-}
+FUNNEL_XP = {"idea": 0, "validation": 200, "mvp": 400, "launch": 600, "growth": 1000}
+STAGE_DEADLINE_DAYS = {"idea": 7, "validation": 14, "mvp": 21, "launch": 14, "growth": 0}
+
+
+# ============================================================
+# ТЕГИ ПРОЕКТОВ
+# ============================================================
+
+DEFAULT_TAGS = ["SaaS", "E-commerce", "Контент", "Фриланс", "Агентство",
+                "Инфопродукт", "Маркетплейс", "Автоматизация", "AI", "Другое"]
+
+
+# ============================================================
+# ЕЖЕДНЕВНЫЕ ЧЕЛЛЕНДЖИ
+# ============================================================
+
+DAILY_CHALLENGES = [
+    {"text": "Проанализируй 1 нишу", "xp": 50, "action": "niche"},
+    {"text": "Напиши оффер для проекта", "xp": 75, "action": "offer"},
+    {"text": "Заверши 2 задачи в квесте", "xp": 60, "action": "tasks"},
+    {"text": "Найди 3 боли на Reddit", "xp": 80, "action": "reddit"},
+    {"text": "Добавь доход в проект", "xp": 50, "action": "revenue"},
+    {"text": "Создай новый проект", "xp": 100, "action": "project"},
+    {"text": "Продвинь проект на 1 стадию", "xp": 100, "action": "stage"},
+    {"text": "Напиши 5 сообщений AI", "xp": 40, "action": "chat"},
+    {"text": "Проанализируй тренд", "xp": 60, "action": "trend"},
+    {"text": "Добавь заметку к проекту", "xp": 30, "action": "note"},
+    {"text": "Создай контент-план", "xp": 70, "action": "template"},
+    {"text": "Сделай SWOT-анализ", "xp": 70, "action": "template"},
+    {"text": "Найди 2 конкурента", "xp": 60, "action": "competitor"},
+    {"text": "Обнови описание проекта", "xp": 30, "action": "update"},
+]
 
 
 # ============================================================
@@ -140,11 +164,14 @@ ACHIEVEMENTS = {
     "first_mvp": {"name": "Первый MVP", "icon": "🛠", "desc": "Доведи проект до стадии MVP"},
     "first_launch": {"name": "Первый запуск", "icon": "🚀", "desc": "Запусти проект"},
     "serial_launcher": {"name": "Серийный запуск", "icon": "🚀🚀", "desc": "Запусти 5 проектов"},
+    "daily_3": {"name": "3 челленджа", "icon": "📅", "desc": "Выполни 3 ежедневных челленджа"},
+    "daily_30": {"name": "30 челленджей", "icon": "📅📅", "desc": "Выполни 30 ежедневных челленджей"},
+    "pain_hunter": {"name": "Охотник за болями", "icon": "🎯", "desc": "Сохрани 10 болей в базу"},
+    "sprint_master": {"name": "Спринт-мастер", "icon": "🏃", "desc": "Заверши 5 спринтов"},
 }
 
 
 def check_achievement(ach_id, player, stats):
-    """Проверяет условия достижений без lambda"""
     checks = {
         "first_chat": stats.get("total_messages", 0) >= 1,
         "chatter": stats.get("total_messages", 0) >= 100,
@@ -172,6 +199,10 @@ def check_achievement(ach_id, player, stats):
         "first_mvp": stats.get("mvp_count", 0) >= 1,
         "first_launch": stats.get("launch_count", 0) >= 1,
         "serial_launcher": stats.get("launch_count", 0) >= 5,
+        "daily_3": stats.get("daily_completed", 0) >= 3,
+        "daily_30": stats.get("daily_completed", 0) >= 30,
+        "pain_hunter": stats.get("saved_pains", 0) >= 10,
+        "sprint_master": stats.get("completed_sprints", 0) >= 5,
     }
     return checks.get(ach_id, False)
 
@@ -207,18 +238,12 @@ def write_json(filename, data):
 
 def get_player():
     default = {
-        "level": 1,
-        "xp": 0,
-        "xp_to_next": 1000,
-        "total_xp": 0,
-        "rank": "Новичок",
-        "streak": 0,
-        "max_streak": 0,
-        "last_active": "",
-        "unlocked": []
+        "level": 1, "xp": 0, "xp_to_next": 1000, "total_xp": 0,
+        "rank": "Новичок", "streak": 0, "max_streak": 0,
+        "last_active": "", "unlocked": [],
+        "daily_completed": 0, "completed_sprints": 0
     }
     player = read_json("player.json", default)
-    # Гарантируем все поля
     for k, v in default.items():
         if k not in player:
             player[k] = v
@@ -228,31 +253,24 @@ def get_player():
 def update_streak(player):
     today_str = date.today().isoformat()
     last = player.get("last_active", "")
-
     if last == today_str:
         return
-
     yesterday_str = (date.today() - timedelta(days=1)).isoformat()
-
     if last == yesterday_str:
         player["streak"] = player.get("streak", 0) + 1
     else:
         player["streak"] = 1
-
     if player["streak"] > player.get("max_streak", 0):
         player["max_streak"] = player["streak"]
-
     player["last_active"] = today_str
 
 
 def add_xp(amount, reason=""):
     ranks = ["Новичок", "Стажёр", "Предприниматель", "Бизнесмен",
              "Стратег", "Магнат", "Титан", "Легенда"]
-
     player = get_player()
     player["xp"] = player.get("xp", 0) + amount
     player["total_xp"] = player.get("total_xp", 0) + amount
-
     leveled = False
     while player["xp"] >= player.get("xp_to_next", 1000):
         player["xp"] -= player["xp_to_next"]
@@ -261,10 +279,7 @@ def add_xp(amount, reason=""):
         rank_idx = min(player["level"] // 5, len(ranks) - 1)
         player["rank"] = ranks[rank_idx]
         leveled = True
-
     update_streak(player)
-
-    # Достижения
     stats = get_global_stats()
     unlocked = player.get("unlocked", [])
     new_achievements = []
@@ -277,14 +292,11 @@ def add_xp(amount, reason=""):
             except Exception:
                 pass
     player["unlocked"] = unlocked
-
     write_json("player.json", player)
-
     try:
         save_daily_snapshot()
     except Exception:
         pass
-
     return player, leveled, new_achievements
 
 
@@ -292,9 +304,10 @@ def get_global_stats():
     projects = read_json("projects.json", {"projects": []})
     quests = read_json("quests.json", {"quests": []})
     activity = read_json("activity.json", {"total_messages": 0, "niches_analyzed": 0})
-
+    pains = read_json("pains.json", {"pains": []})
+    player = read_json("player.json", {})
+    sprints_data = read_json("sprints.json", {"sprints": []})
     project_list = projects.get("projects", [])
-
     return {
         "total_projects": len(project_list),
         "active_projects": len([p for p in project_list if p.get("status") != "archived"]),
@@ -304,6 +317,9 @@ def get_global_stats():
         "niches_analyzed": activity.get("niches_analyzed", 0),
         "mvp_count": len([p for p in project_list if p.get("stage") in ["mvp", "launch", "growth"]]),
         "launch_count": len([p for p in project_list if p.get("stage") in ["launch", "growth"]]),
+        "daily_completed": player.get("daily_completed", 0),
+        "saved_pains": len(pains.get("pains", [])),
+        "completed_sprints": len([s for s in sprints_data.get("sprints", []) if s.get("completed")]),
     }
 
 
@@ -320,7 +336,6 @@ def save_daily_snapshot():
     history = read_json("history.json", {"entries": []})
     stats = get_global_stats()
     player = read_json("player.json", {})
-
     today_str = date.today().isoformat()
     entry = {
         "date": today_str,
@@ -332,15 +347,51 @@ def save_daily_snapshot():
         "streak": player.get("streak", 0),
         "messages": stats.get("total_messages", 0)
     }
-
     entries = history.get("entries", [])
     if entries and entries[-1].get("date") == today_str:
         entries[-1] = entry
     else:
         entries.append(entry)
-
     history["entries"] = entries[-90:]
     write_json("history.json", history)
+
+
+# ============================================================
+# DAILY CHALLENGE
+# ============================================================
+
+def get_daily_challenge():
+    daily = read_json("daily.json", {})
+    today_str = date.today().isoformat()
+    if daily.get("date") != today_str:
+        challenges = random.sample(DAILY_CHALLENGES, min(3, len(DAILY_CHALLENGES)))
+        daily = {
+            "date": today_str,
+            "challenges": [{"text": c["text"], "xp": c["xp"], "action": c["action"], "done": False} for c in challenges],
+            "completed": False
+        }
+        write_json("daily.json", daily)
+    return daily
+
+
+def complete_daily_challenge(index):
+    daily = get_daily_challenge()
+    challenges = daily.get("challenges", [])
+    if 0 <= index < len(challenges) and not challenges[index]["done"]:
+        challenges[index]["done"] = True
+        daily["challenges"] = challenges
+        xp_reward = challenges[index].get("xp", 50)
+        all_done = all(c["done"] for c in challenges)
+        if all_done:
+            daily["completed"] = True
+            xp_reward += 100  # бонус за все
+        write_json("daily.json", daily)
+        player = get_player()
+        player["daily_completed"] = player.get("daily_completed", 0) + 1
+        write_json("player.json", player)
+        add_xp(xp_reward, f"Челлендж: {challenges[index]['text']}")
+        return daily, xp_reward
+    return daily, 0
 
 
 # ============================================================
@@ -367,9 +418,8 @@ def generate_weekly_mission():
     player = get_player()
     active = [p for p in projects.get("projects", []) if p.get("status") == "active"]
     level = player.get("level", 1)
-
     if not active:
-        mission_name = "Создай первый проект"
+        name = "Создай первый проект"
         tasks = [
             {"text": "Придумай идею для бизнеса", "done": False},
             {"text": "Создай проект в JARVIS", "done": False},
@@ -377,7 +427,7 @@ def generate_weekly_mission():
             {"text": "Напиши описание продукта", "done": False},
         ]
     elif level < 3:
-        mission_name = "Запусти MVP"
+        name = "Запусти MVP"
         tasks = [
             {"text": "Определи ЦА", "done": False},
             {"text": "Создай лендинг", "done": False},
@@ -385,7 +435,7 @@ def generate_weekly_mission():
             {"text": "Получи первый отклик", "done": False},
         ]
     elif level < 7:
-        mission_name = "Масштабируй бизнес"
+        name = "Масштабируй бизнес"
         tasks = [
             {"text": "Проанализируй 3 новых ниши", "done": False},
             {"text": "Запусти A/B тест", "done": False},
@@ -393,29 +443,147 @@ def generate_weekly_mission():
             {"text": "Увеличь конверсию на 10%", "done": False},
         ]
     else:
-        mission_name = "Выйди на новый уровень"
+        name = "Выйди на новый уровень"
         tasks = [
             {"text": "Запусти новый продукт", "done": False},
             {"text": "Автоматизируй процесс", "done": False},
             {"text": "Делегируй 3 задачи", "done": False},
             {"text": "Достигни $1K MRR", "done": False},
         ]
-
     today = date.today()
-    days_until_sunday = 6 - today.weekday()
-    end = today + timedelta(days=days_until_sunday)
-
-    mission = {
-        "name": mission_name,
-        "tasks": tasks,
-        "xp_reward": 500,
-        "week_start": today.isoformat(),
-        "week_end": end.isoformat(),
-        "completed": False
-    }
-
+    end = today + timedelta(days=(6 - today.weekday()))
+    mission = {"name": name, "tasks": tasks, "xp_reward": 500,
+               "week_start": today.isoformat(), "week_end": end.isoformat(), "completed": False}
     write_json("mission.json", mission)
     return mission
+
+
+# ============================================================
+# SPRINTS TRACKING
+# ============================================================
+
+def get_project_sprints(project_id):
+    data = read_json("sprints.json", {"sprints": []})
+    return [s for s in data["sprints"] if s.get("project_id") == project_id]
+
+
+def create_sprint(project_id, name, tasks, duration_days=7):
+    data = read_json("sprints.json", {"sprints": []})
+    today = date.today()
+    sprint = {
+        "id": str(int(time.time() * 1000)),
+        "project_id": project_id,
+        "name": name,
+        "number": len([s for s in data["sprints"] if s.get("project_id") == project_id]) + 1,
+        "tasks": [{"text": t, "done": False} for t in tasks] if isinstance(tasks[0], str) else tasks,
+        "start_date": today.isoformat(),
+        "end_date": (today + timedelta(days=duration_days)).isoformat(),
+        "completed": False,
+        "created_at": datetime.now().isoformat()
+    }
+    data["sprints"].append(sprint)
+    write_json("sprints.json", data)
+    return sprint
+
+
+# ============================================================
+# PAIN POINTS DATABASE
+# ============================================================
+
+def save_pain(pain_text, source="manual", niche="", url=""):
+    pains = read_json("pains.json", {"pains": []})
+    pain = {
+        "id": str(int(time.time() * 1000)),
+        "text": pain_text,
+        "source": source,
+        "niche": niche,
+        "url": url,
+        "status": "new",
+        "created_at": datetime.now().isoformat()
+    }
+    pains["pains"].append(pain)
+    write_json("pains.json", pains)
+    return pain
+
+
+# ============================================================
+# DAILY PLANNER
+# ============================================================
+
+def generate_daily_plan():
+    projects = read_json("projects.json", {"projects": []})
+    quests = read_json("quests.json", {"quests": []})
+    mission = get_weekly_mission()
+    daily = get_daily_challenge()
+
+    active_projects = [p for p in projects.get("projects", []) if p.get("status") == "active"]
+    active_quests = [q for q in quests.get("quests", []) if not q.get("completed")]
+    urgent_quests = [q for q in active_quests if q.get("priority") == "urgent"]
+
+    # Проекты с просроченными дедлайнами стадий
+    stuck_projects = []
+    today = date.today()
+    for p in active_projects:
+        stage = p.get("stage", "idea")
+        history = p.get("stage_history", [])
+        if history:
+            last_change = history[-1].get("date", "")
+            try:
+                last_date = date.fromisoformat(last_change[:10])
+                days_in_stage = (today - last_date).days
+                deadline = STAGE_DEADLINE_DAYS.get(stage, 7)
+                if deadline > 0 and days_in_stage > deadline:
+                    stuck_projects.append({"project": p, "days": days_in_stage, "deadline": deadline})
+            except Exception:
+                pass
+
+    plan = {
+        "date": today.isoformat(),
+        "sections": []
+    }
+
+    # Застрявшие проекты
+    if stuck_projects:
+        plan["sections"].append({
+            "title": "🚨 Застрявшие проекты",
+            "items": [f"⚠️ {s['project']['name']} — {s['days']} дней на стадии {FUNNEL_NAMES.get(s['project'].get('stage','idea'),'?')} (лимит {s['deadline']}д)"
+                      for s in stuck_projects]
+        })
+
+    # Срочные квесты
+    if urgent_quests:
+        plan["sections"].append({
+            "title": "🔴 Срочные квесты",
+            "items": [f"⚔️ {q['name']} — {len([t for t in q.get('tasks',[]) if not t.get('done')])} задач осталось"
+                      for q in urgent_quests[:5]]
+        })
+
+    # Миссия недели
+    if mission and not mission.get("completed"):
+        undone = [t for t in mission.get("tasks", []) if not t.get("done")]
+        if undone:
+            plan["sections"].append({
+                "title": "🎯 Миссия недели",
+                "items": [f"☐ {t['text']}" for t in undone]
+            })
+
+    # Ежедневные челленджи
+    undone_challenges = [c for c in daily.get("challenges", []) if not c.get("done")]
+    if undone_challenges:
+        plan["sections"].append({
+            "title": "📅 Ежедневные челленджи",
+            "items": [f"☐ {c['text']} (+{c['xp']} XP)" for c in undone_challenges]
+        })
+
+    # Обычные квесты
+    normal_quests = [q for q in active_quests if q.get("priority") != "urgent"][:3]
+    if normal_quests:
+        plan["sections"].append({
+            "title": "⚔️ Квесты на сегодня",
+            "items": [f"☐ {q['name']}" for q in normal_quests]
+        })
+
+    return plan
 
 
 # ============================================================
@@ -522,7 +690,21 @@ def parse_website(url):
         lines = [l.strip() for l in soup.get_text().splitlines() if l.strip()]
         return "\n".join(lines[:50])[:2000]
     except Exception as e:
-        return "Ошибка парсинга: " + str(e)
+        return "Ошибка: " + str(e)
+
+
+def parse_youtube_comments(video_url):
+    try:
+        from bs4 import BeautifulSoup
+        resp = requests.get(video_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+        soup = BeautifulSoup(resp.text, "html.parser")
+        title = soup.find("title")
+        title_text = title.get_text() if title else "Unknown"
+        description = soup.find("meta", {"name": "description"})
+        desc_text = description.get("content", "") if description else ""
+        return f"Видео: {title_text}\n\nОписание: {desc_text[:500]}"
+    except Exception as e:
+        return "Ошибка YouTube: " + str(e)
 
 
 def generate_image(prompt):
@@ -581,11 +763,10 @@ def create_voice(text):
             os.remove(p)
     try:
         from gtts import gTTS
-        fallback_path = f"/tmp/voice_{file_id}_gtts.mp3"
-        tts = gTTS(text=text, lang='ru')
-        tts.save(fallback_path)
-        if os.path.exists(fallback_path) and os.path.getsize(fallback_path) > 100:
-            return fallback_path
+        fallback = f"/tmp/voice_{file_id}_gtts.mp3"
+        gTTS(text=text, lang='ru').save(fallback)
+        if os.path.exists(fallback) and os.path.getsize(fallback) > 100:
+            return fallback
     except Exception:
         pass
     return None
@@ -607,19 +788,12 @@ def call_ai(system_prompt, user_message, context=None):
         resp = requests.post(GROQ_URL, headers={
             "Authorization": "Bearer " + (GROQ_API_KEY or ""),
             "Content-Type": "application/json",
-        }, json={
-            "model": GROQ_MODEL,
-            "messages": messages,
-            "temperature": 0.9,
-            "max_tokens": 3000,
-        }, timeout=60)
+        }, json={"model": GROQ_MODEL, "messages": messages, "temperature": 0.9, "max_tokens": 3000}, timeout=60)
         if resp.status_code != 200:
-            print(f"AI error: {resp.status_code} {resp.text[:200]}")
             return "AI временно недоступен."
-        data = resp.json()
-        return data.get("choices", [{}])[0].get("message", {}).get("content", "Пустой ответ от AI.")
+        return resp.json().get("choices", [{}])[0].get("message", {}).get("content", "Пустой ответ.")
     except Exception as e:
-        print(f"AI exception: {e}")
+        print(f"AI error: {e}")
         return "Ошибка соединения с AI."
 
 
@@ -628,34 +802,23 @@ def call_ai(system_prompt, user_message, context=None):
 # ============================================================
 
 def auto_generate_quests(project):
-    prompt = f"""Создай 3 квеста (задания) для проекта.
-
+    prompt = f"""Создай 3 квеста для проекта.
 Проект: {project.get('name', '')}
 Описание: {project.get('description', '')}
 Монетизация: {project.get('monetization', '')}
-
-Ответь СТРОГО в JSON формате, без лишнего текста:
-[
-  {{"name": "название квеста", "priority": "urgent", "tasks": ["задача 1", "задача 2", "задача 3"]}},
-  {{"name": "название квеста", "priority": "normal", "tasks": ["задача 1", "задача 2", "задача 3"]}},
-  {{"name": "название квеста", "priority": "normal", "tasks": ["задача 1", "задача 2", "задача 3"]}}
-]
-
-Первый квест — срочный (валидация идеи).
-Второй — создание MVP.
-Третий — первые продажи."""
-
+Ответь СТРОГО JSON массивом:
+[{{"name": "квест", "priority": "urgent", "tasks": ["задача1", "задача2", "задача3"]}},
+ {{"name": "квест", "priority": "normal", "tasks": ["задача1", "задача2", "задача3"]}},
+ {{"name": "квест", "priority": "normal", "tasks": ["задача1", "задача2", "задача3"]}}]"""
     try:
-        answer = call_ai("Отвечай ТОЛЬКО JSON массивом. Без пояснений.", prompt, [])
+        answer = call_ai("Отвечай ТОЛЬКО JSON.", prompt, [])
         start = answer.find('[')
         end = answer.rfind(']') + 1
         if start < 0 or end <= start:
             return []
-
         quest_data = json.loads(answer[start:end])
         quests_file = read_json("quests.json", {"quests": []})
         created = []
-
         for idx, q in enumerate(quest_data):
             tasks = [{"text": t, "done": False} for t in q.get("tasks", [])]
             quest = {
@@ -663,14 +826,12 @@ def auto_generate_quests(project):
                 "name": q.get("name", "Квест"),
                 "priority": q.get("priority", "normal"),
                 "xp_reward": 250 if q.get("priority") == "urgent" else 150,
-                "tasks": tasks,
-                "completed": False,
+                "tasks": tasks, "completed": False,
                 "project_id": project.get("id", ""),
                 "created_at": datetime.now().isoformat()
             }
             quests_file["quests"].append(quest)
             created.append(quest)
-
         write_json("quests.json", quests_file)
         return created
     except Exception as e:
@@ -678,25 +839,12 @@ def auto_generate_quests(project):
         return []
 
 
-# ============================================================
-# ГЕНЕРАЦИЯ ОФФЕРА
-# ============================================================
-
 def generate_offer(project):
-    prompt = f"""Создай убойный оффер для проекта.
-
+    prompt = f"""Создай убойный оффер:
 Проект: {project.get('name', '')}
 Описание: {project.get('description', '')}
 Монетизация: {project.get('monetization', '')}
-
-Дай:
-1. Заголовок (1 строка, цепляющий)
-2. Подзаголовок (2 строки, выгода)
-3. 3 буллета (ключевые преимущества)
-4. CTA (призыв к действию)
-5. Гарантия
-6. Цена и обоснование"""
-
+Дай: 1.Заголовок 2.Подзаголовок 3.3 буллета 4.CTA 5.Гарантия 6.Цена"""
     return call_ai(JARVIS_SYSTEM_PROMPT, prompt, [])
 
 
@@ -708,7 +856,7 @@ def send_msg(chat_id, text, reply_kb=None, inline_kb=None):
     if not TELEGRAM_BOT_TOKEN:
         return []
     url = "https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendMessage"
-    sent_ids = []
+    sent = []
     while text:
         chunk = text[:4000]
         text = text[4000:]
@@ -716,118 +864,98 @@ def send_msg(chat_id, text, reply_kb=None, inline_kb=None):
         if not text and inline_kb:
             payload["reply_markup"] = inline_kb
         try:
-            resp = requests.post(url, json=payload, timeout=30)
-            if resp.status_code == 200:
-                msg_id = resp.json().get("result", {}).get("message_id")
-                if msg_id:
-                    sent_ids.append(msg_id)
+            r = requests.post(url, json=payload, timeout=30)
+            if r.status_code == 200:
+                mid = r.json().get("result", {}).get("message_id")
+                if mid:
+                    sent.append(mid)
         except Exception:
             pass
     if reply_kb:
-        send_reply_kb(chat_id, reply_kb)
-    return sent_ids
+        try:
+            r = requests.post(url, json={"chat_id": chat_id, "text": "⌨️", "reply_markup": reply_kb}, timeout=30)
+            if r.status_code == 200:
+                mid = r.json().get("result", {}).get("message_id")
+                if mid:
+                    threading.Thread(target=lambda: (time.sleep(1), delete_msg(chat_id, mid)), daemon=True).start()
+        except Exception:
+            pass
+    return sent
 
 
-def send_reply_kb(chat_id, reply_kb):
+def delete_msg(chat_id, mid):
     if not TELEGRAM_BOT_TOKEN:
         return
     try:
-        resp = requests.post(
-            "https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendMessage",
-            json={"chat_id": chat_id, "text": "⌨️", "reply_markup": reply_kb}, timeout=30)
-        if resp.status_code == 200:
-            msg_id = resp.json().get("result", {}).get("message_id")
-            if msg_id:
-                threading.Thread(target=delete_msg_delayed, args=(chat_id, msg_id, 1), daemon=True).start()
+        requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/deleteMessage",
+                       json={"chat_id": chat_id, "message_id": mid}, timeout=10)
     except Exception:
         pass
 
 
-def delete_msg(chat_id, message_id):
+def edit_msg(chat_id, mid, text, kb=None):
     if not TELEGRAM_BOT_TOKEN:
         return
+    p = {"chat_id": chat_id, "message_id": mid, "text": text[:4000]}
+    if kb:
+        p["reply_markup"] = kb
     try:
-        requests.post("https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/deleteMessage",
-                       json={"chat_id": chat_id, "message_id": message_id}, timeout=10)
+        requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/editMessageText", json=p, timeout=30)
     except Exception:
         pass
 
 
-def delete_msg_delayed(chat_id, message_id, delay):
-    time.sleep(delay)
-    delete_msg(chat_id, message_id)
-
-
-def edit_msg(chat_id, message_id, text, inline_kb=None):
-    if not TELEGRAM_BOT_TOKEN:
+def send_photo(chat_id, path, caption=""):
+    if not TELEGRAM_BOT_TOKEN or not path or not os.path.exists(path):
         return
-    payload = {"chat_id": chat_id, "message_id": message_id, "text": text[:4000]}
-    if inline_kb:
-        payload["reply_markup"] = inline_kb
     try:
-        requests.post("https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/editMessageText",
-                       json=payload, timeout=30)
+        with open(path, "rb") as f:
+            requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto",
+                          data={"chat_id": chat_id, "caption": caption[:1000]},
+                          files={"photo": ("img.jpg", f, "image/jpeg")}, timeout=60)
     except Exception:
         pass
-
-
-def send_photo(chat_id, file_path, caption=""):
-    if not TELEGRAM_BOT_TOKEN:
-        return
-    try:
-        if file_path and os.path.exists(file_path):
-            with open(file_path, "rb") as f:
-                requests.post("https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendPhoto",
-                              data={"chat_id": chat_id, "caption": caption[:1000]},
-                              files={"photo": ("image.jpg", f, "image/jpeg")}, timeout=60)
-    except Exception:
-        send_msg(chat_id, "❌ Ошибка отправки фото.")
     finally:
-        if file_path and os.path.exists(file_path):
-            try:
-                os.remove(file_path)
-            except Exception:
-                pass
+        try:
+            os.remove(path)
+        except Exception:
+            pass
 
 
-def send_voice(chat_id, file_path):
-    if not TELEGRAM_BOT_TOKEN:
+def send_voice(chat_id, path):
+    if not TELEGRAM_BOT_TOKEN or not path or not os.path.exists(path):
         return
     try:
-        if file_path and os.path.exists(file_path):
-            with open(file_path, "rb") as f:
-                if file_path.endswith(".ogg"):
-                    requests.post("https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendVoice",
-                                  data={"chat_id": chat_id}, files={"voice": f}, timeout=30)
-                else:
-                    requests.post("https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendAudio",
-                                  data={"chat_id": chat_id, "title": "Озвучка"}, files={"audio": f}, timeout=30)
+        with open(path, "rb") as f:
+            ep = "sendVoice" if path.endswith(".ogg") else "sendAudio"
+            k = "voice" if path.endswith(".ogg") else "audio"
+            requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/{ep}",
+                          data={"chat_id": chat_id}, files={k: f}, timeout=30)
     except Exception:
-        send_msg(chat_id, "❌ Ошибка голосового.")
+        pass
     finally:
-        if file_path and os.path.exists(file_path):
-            try:
-                os.remove(file_path)
-            except Exception:
-                pass
+        try:
+            os.remove(path)
+        except Exception:
+            pass
 
 
 def send_typing(chat_id):
     if not TELEGRAM_BOT_TOKEN:
         return
     try:
-        requests.post("https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendChatAction",
+        requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendChatAction",
                        json={"chat_id": chat_id, "action": "typing"}, timeout=10)
     except Exception:
         pass
 
 
-def answer_cb(callback_id, text=""):
+def answer_cb(cb_id, text=""):
     if not TELEGRAM_BOT_TOKEN:
         return
     try:
-        requests.post("https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/answerCallbackQuery",
-                       json={"callback_query_id": callback_id, "text": text}, timeout=10)
+        requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/answerCallbackQuery",
+                       json={"callback_query_id": cb_id, "text": text}, timeout=10)
     except Exception:
         pass
 
@@ -891,16 +1019,8 @@ def main_inline_kb():
 
 def tpl_inline_kb():
     return {"inline_keyboard": [
-        [{"text": "📋 Бизнес-план", "callback_data": "tpl_biz_plan"}],
-        [{"text": "📅 Контент-план", "callback_data": "tpl_content_plan"}],
-        [{"text": "🔍 Конкуренты", "callback_data": "tpl_competitor"}],
-        [{"text": "📄 Резюме", "callback_data": "tpl_resume"}],
-        [{"text": "✍️ Пак постов", "callback_data": "tpl_post_pack"}],
-        [{"text": "🌐 Лендинг", "callback_data": "tpl_landing"}],
-        [{"text": "📧 Email-цепочка", "callback_data": "tpl_email_chain"}],
-        [{"text": "📊 SWOT", "callback_data": "tpl_swot"}],
-        [{"text": "⬅️ Назад", "callback_data": "back_main"}],
-    ]}
+        [{"text": v["name"], "callback_data": "tpl_" + k}] for k, v in TEMPLATES.items()
+    ] + [[{"text": "⬅️ Назад", "callback_data": "back_main"}]]}
 
 
 def tools_inline_kb():
@@ -925,395 +1045,166 @@ def after_inline_kb():
 
 
 # ============================================================
-# TELEGRAM CALLBACK
+# TELEGRAM HANDLERS
 # ============================================================
 
 def handle_callback(cb):
     chat_id = cb["message"]["chat"]["id"]
     cb_id = cb["id"]
     data = cb.get("data", "")
-    old_msg_id = cb["message"]["message_id"]
+    old = cb["message"]["message_id"]
 
     if data.startswith("mode_"):
-        mode_key = data[5:]
-        if mode_key in MODES:
-            set_user(chat_id, "mode", mode_key)
-            set_user(chat_id, "context", [])
-            set_user(chat_id, "waiting", "")
-            m = MODES[mode_key]
-            answer_cb(cb_id, m["name"])
-            delete_msg(chat_id, old_msg_id)
-            send_msg(chat_id, m["emoji"] + " Режим: " + m["name"] + "\n\nЗадавай вопросы!",
+        mk = data[5:]
+        if mk in MODES:
+            set_user(chat_id, "mode", mk); set_user(chat_id, "context", []); set_user(chat_id, "waiting", "")
+            answer_cb(cb_id, MODES[mk]["name"]); delete_msg(chat_id, old)
+            send_msg(chat_id, MODES[mk]["emoji"] + " Режим: " + MODES[mk]["name"] + "\n\nЗадавай вопросы!",
                      reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
-
     elif data == "show_templates":
-        answer_cb(cb_id)
-        edit_msg(chat_id, old_msg_id, "📦 Шаблоны:", tpl_inline_kb())
-
+        answer_cb(cb_id); edit_msg(chat_id, old, "📦 Шаблоны:", tpl_inline_kb())
     elif data.startswith("tpl_"):
-        key = data[4:]
-        if key in TEMPLATES:
-            answer_cb(cb_id, TEMPLATES[key]["name"])
-            delete_msg(chat_id, old_msg_id)
-            send_typing(chat_id)
-            update_tg_stats(chat_id)
-            answer = call_ai(get_mode_prompt(chat_id), TEMPLATES[key]["prompt"], get_context(chat_id))
-            add_context(chat_id, "user", TEMPLATES[key]["prompt"])
-            add_context(chat_id, "assistant", answer)
-            send_msg(chat_id, answer, reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
-
+        k = data[4:]
+        if k in TEMPLATES:
+            answer_cb(cb_id, TEMPLATES[k]["name"]); delete_msg(chat_id, old); send_typing(chat_id); update_tg_stats(chat_id)
+            a = call_ai(get_mode_prompt(chat_id), TEMPLATES[k]["prompt"], get_context(chat_id))
+            add_context(chat_id, "user", TEMPLATES[k]["prompt"]); add_context(chat_id, "assistant", a)
+            send_msg(chat_id, a, reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
     elif data == "show_tools":
-        answer_cb(cb_id)
-        edit_msg(chat_id, old_msg_id, "🛠 Инструменты:", tools_inline_kb())
-
-    elif data == "tool_search":
-        answer_cb(cb_id); delete_msg(chat_id, old_msg_id)
-        set_user(chat_id, "waiting", "search"); send_msg(chat_id, "🔍 Напиши запрос:")
-    elif data == "tool_parse":
-        answer_cb(cb_id); delete_msg(chat_id, old_msg_id)
-        set_user(chat_id, "waiting", "parse"); send_msg(chat_id, "🌐 Отправь ссылку:")
-    elif data == "tool_image":
-        answer_cb(cb_id); delete_msg(chat_id, old_msg_id)
-        set_user(chat_id, "waiting", "image"); send_msg(chat_id, "🖼 Опиши что нарисовать:")
-    elif data == "tool_voice":
-        answer_cb(cb_id); delete_msg(chat_id, old_msg_id)
-        set_user(chat_id, "waiting", "voice"); send_msg(chat_id, "🎙 Напиши текст:")
-    elif data == "tool_summarize":
-        answer_cb(cb_id); delete_msg(chat_id, old_msg_id)
-        set_user(chat_id, "waiting", "summarize"); send_msg(chat_id, "📝 Отправь текст:")
-    elif data == "tool_enru":
-        answer_cb(cb_id); delete_msg(chat_id, old_msg_id)
-        set_user(chat_id, "waiting", "enru"); send_msg(chat_id, "🇬🇧→🇷🇺 Текст:")
-    elif data == "tool_ruen":
-        answer_cb(cb_id); delete_msg(chat_id, old_msg_id)
-        set_user(chat_id, "waiting", "ruen"); send_msg(chat_id, "🇷🇺→🇬🇧 Текст:")
-
-    elif data == "tool_clear":
-        answer_cb(cb_id, "Очищено!")
-        set_user(chat_id, "context", [])
-        edit_msg(chat_id, old_msg_id, "🗑 Очищено!", main_inline_kb())
-
-    elif data == "act_more":
-        answer_cb(cb_id); delete_msg(chat_id, old_msg_id); send_typing(chat_id)
-        answer = call_ai(get_mode_prompt(chat_id), "Подробнее. Больше деталей и примеров.", get_context(chat_id))
-        add_context(chat_id, "user", "Подробнее"); add_context(chat_id, "assistant", answer)
-        send_msg(chat_id, answer, inline_kb=after_inline_kb())
-
-    elif data == "act_rewrite":
-        answer_cb(cb_id); delete_msg(chat_id, old_msg_id); send_typing(chat_id)
-        answer = call_ai(get_mode_prompt(chat_id), "Перепиши лучше.", get_context(chat_id))
-        add_context(chat_id, "user", "Переписать"); add_context(chat_id, "assistant", answer)
-        send_msg(chat_id, answer, inline_kb=after_inline_kb())
-
-    elif data == "act_list":
-        answer_cb(cb_id); delete_msg(chat_id, old_msg_id); send_typing(chat_id)
-        answer = call_ai(get_mode_prompt(chat_id), "Оформи списком.", get_context(chat_id))
-        add_context(chat_id, "user", "Списком"); add_context(chat_id, "assistant", answer)
-        send_msg(chat_id, answer, inline_kb=after_inline_kb())
-
-    elif data == "act_example":
-        answer_cb(cb_id); delete_msg(chat_id, old_msg_id); send_typing(chat_id)
-        answer = call_ai(get_mode_prompt(chat_id), "Пример с цифрами.", get_context(chat_id))
-        add_context(chat_id, "user", "Пример"); add_context(chat_id, "assistant", answer)
-        send_msg(chat_id, answer, inline_kb=after_inline_kb())
-
-    elif data == "act_image":
-        answer_cb(cb_id); delete_msg(chat_id, old_msg_id); send_typing(chat_id)
-        prompt = call_ai("Отвечай ТОЛЬКО промтом.", "Короткий промт на английском для картинки. 10 слов макс.", get_context(chat_id))
-        prompt = prompt.strip().strip('"\'`')[:200]
-        send_msg(chat_id, f"🎨 {prompt}\n⏳ Подожди...")
-        img_path = generate_image(prompt)
-        send_photo(chat_id, img_path, "🖼 " + prompt)
-
-    elif data == "act_voice":
-        answer_cb(cb_id); delete_msg(chat_id, old_msg_id); send_typing(chat_id)
-        ctx = get_context(chat_id)
-        if not ctx:
-            send_msg(chat_id, "❌ Нечего озвучивать.")
-            return
-        send_msg(chat_id, "🎙 Создаю...")
-        voice_path = create_voice(ctx[-1]["text"][:500])
-        if voice_path:
-            send_voice(chat_id, voice_path)
-        else:
-            send_msg(chat_id, "❌ Ошибка озвучки.")
-
-    elif data == "act_fav":
-        answer_cb(cb_id, "📌 Добавлено!")
-        ctx = get_context(chat_id)
-        if ctx:
-            add_favorite(chat_id, ctx[-1]["text"])
-
-    elif data == "act_note":
-        answer_cb(cb_id, "📝 Сохранено!")
-        ctx = get_context(chat_id)
-        if ctx:
-            add_note(chat_id, ctx[-1]["text"])
-
-    elif data == "show_favs":
-        answer_cb(cb_id)
-        favs = get_favorites(chat_id)
-        if favs:
-            t = "📌 Избранное:\n\n"
-            for i, f in enumerate(favs[-10:], 1):
-                t += f"{i}. [{f['date']}]\n{f['text'][:200]}\n\n"
-            edit_msg(chat_id, old_msg_id, t, main_inline_kb())
-        else:
-            edit_msg(chat_id, old_msg_id, "📌 Пусто.", main_inline_kb())
-
-    elif data == "show_notes":
-        answer_cb(cb_id)
-        notes = get_notes(chat_id)
-        if notes:
-            t = "📝 Заметки:\n\n"
-            for i, n in enumerate(notes[-10:], 1):
-                t += f"{i}. [{n['date']}]\n{n['text'][:200]}\n\n"
-            edit_msg(chat_id, old_msg_id, t, main_inline_kb())
-        else:
-            edit_msg(chat_id, old_msg_id, "📝 Пусто.", main_inline_kb())
-
+        answer_cb(cb_id); edit_msg(chat_id, old, "🛠 Инструменты:", tools_inline_kb())
+    elif data.startswith("tool_"):
+        t = data[5:]
+        answer_cb(cb_id); delete_msg(chat_id, old)
+        prompts = {"search": "🔍 Запрос:", "parse": "🌐 Ссылка:", "image": "🖼 Опиши:", "voice": "🎙 Текст:",
+                   "summarize": "📝 Текст:", "enru": "🇬🇧→🇷🇺 Текст:", "ruen": "🇷🇺→🇬🇧 Текст:"}
+        if t == "clear":
+            set_user(chat_id, "context", []); send_msg(chat_id, "🗑 Очищено!")
+        elif t in prompts:
+            set_user(chat_id, "waiting", t); send_msg(chat_id, prompts[t])
+    elif data.startswith("act_"):
+        a = data[4:]
+        answer_cb(cb_id); delete_msg(chat_id, old)
+        if a in ("more", "rewrite", "list", "example"):
+            send_typing(chat_id)
+            qs = {"more": "Подробнее.", "rewrite": "Перепиши лучше.", "list": "Оформи списком.", "example": "Пример с цифрами."}
+            ans = call_ai(get_mode_prompt(chat_id), qs[a], get_context(chat_id))
+            add_context(chat_id, "user", a); add_context(chat_id, "assistant", ans)
+            send_msg(chat_id, ans, inline_kb=after_inline_kb())
+        elif a == "image":
+            send_typing(chat_id)
+            p = call_ai("Отвечай ТОЛЬКО промтом.", "Короткий промт на английском. 10 слов.", get_context(chat_id)).strip().strip('"\'`')[:200]
+            send_msg(chat_id, f"🎨 {p}\n⏳..."); send_photo(chat_id, generate_image(p), "🖼 " + p)
+        elif a == "voice":
+            ctx = get_context(chat_id)
+            if ctx:
+                send_msg(chat_id, "🎙 Создаю...")
+                vp = create_voice(ctx[-1]["text"][:500])
+                if vp: send_voice(chat_id, vp)
+                else: send_msg(chat_id, "❌ Ошибка.")
+        elif a == "fav":
+            ctx = get_context(chat_id)
+            if ctx: add_favorite(chat_id, ctx[-1]["text"])
+        elif a == "note":
+            ctx = get_context(chat_id)
+            if ctx: add_note(chat_id, ctx[-1]["text"])
     elif data == "back_main":
         answer_cb(cb_id)
         mode = get_user(chat_id, "mode", DEFAULT_MODE)
-        edit_msg(chat_id, old_msg_id, "🤖 Jarvis 2.0 | " + MODES.get(mode, MODES[DEFAULT_MODE])["name"], main_inline_kb())
+        edit_msg(chat_id, old, "🤖 Jarvis 2.0 | " + MODES.get(mode, MODES[DEFAULT_MODE])["name"], main_inline_kb())
 
-
-# ============================================================
-# TELEGRAM MESSAGE
-# ============================================================
 
 def handle_message(chat_id, text):
     text = text.strip()
-
     if text in ["/start", "/menu", "🏠 Меню", "⬅️ Назад в меню"]:
-        send_msg(chat_id, "🤖 Jarvis AI Agent 2.0\n\nВыбери режим или напиши вопрос:",
-                 reply_kb=main_reply_kb(), inline_kb=main_inline_kb())
-        return
-
+        send_msg(chat_id, "🤖 Jarvis 2.0\n\nВыбери режим:", reply_kb=main_reply_kb(), inline_kb=main_inline_kb()); return
     if text.startswith("/note "):
-        add_note(chat_id, text[6:].strip())
-        send_msg(chat_id, "📝 Сохранено!")
-        return
-
+        add_note(chat_id, text[6:]); send_msg(chat_id, "📝 Сохранено!"); return
     if text in ["/stats", "📊 Статистика"]:
-        stats = get_tg_stats(chat_id)
-        player = get_player()
-        msg = "📊 Статистика:\n\n"
-        msg += f"⚡ Уровень: {player.get('level', 1)} ({player.get('rank', 'Новичок')})\n"
-        msg += f"✨ XP: {player.get('xp', 0)}/{player.get('xp_to_next', 1000)}\n"
-        msg += f"🔥 Streak: {player.get('streak', 0)} дней (рекорд: {player.get('max_streak', 0)})\n"
-        msg += f"💬 Сообщений: {stats.get('messages', 0)}\n\n"
-        msg += f"🏆 Достижения: {len(player.get('unlocked', []))}/{len(ACHIEVEMENTS)}\n"
-        for ach_id in player.get("unlocked", []):
-            if ach_id in ACHIEVEMENTS:
-                msg += f"  {ACHIEVEMENTS[ach_id]['icon']} {ACHIEVEMENTS[ach_id]['name']}\n"
-        send_msg(chat_id, msg)
-        return
-
+        s = get_tg_stats(chat_id); p = get_player()
+        m = f"📊 Lv.{p.get('level',1)} ({p.get('rank','Новичок')})\n✨ {p.get('xp',0)}/{p.get('xp_to_next',1000)} XP\n🔥 {p.get('streak',0)}д (рек:{p.get('max_streak',0)})\n💬 {s.get('messages',0)} сообщ.\n🏆 {len(p.get('unlocked',[]))}/{len(ACHIEVEMENTS)}"
+        send_msg(chat_id, m); return
     if text in MODE_BUTTONS:
-        mode_key = MODE_BUTTONS[text]
-        set_user(chat_id, "mode", mode_key)
-        set_user(chat_id, "context", [])
-        set_user(chat_id, "waiting", "")
-        m = MODES[mode_key]
-        send_msg(chat_id, m["emoji"] + " Режим: " + m["name"] + "\n\nЗадавай вопросы!",
-                 reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
-        return
-
+        mk = MODE_BUTTONS[text]; set_user(chat_id, "mode", mk); set_user(chat_id, "context", []); set_user(chat_id, "waiting", "")
+        send_msg(chat_id, MODES[mk]["emoji"] + " " + MODES[mk]["name"], reply_kb=after_reply_kb(), inline_kb=after_inline_kb()); return
     if text == "📦 Шаблоны":
-        send_msg(chat_id, "📦 Шаблоны:", reply_kb=templates_reply_kb(), inline_kb=tpl_inline_kb())
-        return
-
+        send_msg(chat_id, "📦 Шаблоны:", reply_kb=templates_reply_kb(), inline_kb=tpl_inline_kb()); return
     if text in TEMPLATE_BUTTONS:
-        key = TEMPLATE_BUTTONS[text]
-        send_typing(chat_id)
-        update_tg_stats(chat_id)
-        answer = call_ai(get_mode_prompt(chat_id), TEMPLATES[key]["prompt"], get_context(chat_id))
-        add_context(chat_id, "user", TEMPLATES[key]["prompt"])
-        add_context(chat_id, "assistant", answer)
-        send_msg(chat_id, answer, reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
-        return
-
+        k = TEMPLATE_BUTTONS[text]; send_typing(chat_id); update_tg_stats(chat_id)
+        a = call_ai(get_mode_prompt(chat_id), TEMPLATES[k]["prompt"], get_context(chat_id))
+        add_context(chat_id, "user", TEMPLATES[k]["prompt"]); add_context(chat_id, "assistant", a)
+        send_msg(chat_id, a, reply_kb=after_reply_kb(), inline_kb=after_inline_kb()); return
     if text == "🛠 Инструменты":
-        send_msg(chat_id, "🛠 Инструменты:", reply_kb=tools_reply_kb(), inline_kb=tools_inline_kb())
-        return
+        send_msg(chat_id, "🛠:", reply_kb=tools_reply_kb(), inline_kb=tools_inline_kb()); return
 
-    if text == "🔍 Поиск":
-        set_user(chat_id, "waiting", "search"); send_msg(chat_id, "🔍 Запрос:"); return
-    if text == "🌐 Парсинг сайта":
-        set_user(chat_id, "waiting", "parse"); send_msg(chat_id, "🌐 Ссылка:"); return
-    if text == "🖼 Генерация фото":
-        set_user(chat_id, "waiting", "image"); send_msg(chat_id, "🖼 Опиши:"); return
-    if text == "🎙 Озвучка текста":
-        set_user(chat_id, "waiting", "voice"); send_msg(chat_id, "🎙 Текст:"); return
-    if text == "📝 Суммаризация":
-        set_user(chat_id, "waiting", "summarize"); send_msg(chat_id, "📝 Текст:"); return
-    if text == "🇬🇧→🇷🇺 Перевод EN-RU":
-        set_user(chat_id, "waiting", "enru"); send_msg(chat_id, "🇬🇧→🇷🇺 Текст:"); return
-    if text == "🇷🇺→🇬🇧 Перевод RU-EN":
-        set_user(chat_id, "waiting", "ruen"); send_msg(chat_id, "🇷🇺→🇬🇧 Текст:"); return
-
+    tool_map = {"🔍 Поиск": "search", "🌐 Парсинг сайта": "parse", "🖼 Генерация фото": "image",
+                "🎙 Озвучка текста": "voice", "📝 Суммаризация": "summarize",
+                "🇬🇧→🇷🇺 Перевод EN-RU": "enru", "🇷🇺→🇬🇧 Перевод RU-EN": "ruen"}
+    if text in tool_map:
+        set_user(chat_id, "waiting", tool_map[text]); send_msg(chat_id, "Введи:"); return
     if text == "🗑 Очистить контекст":
-        set_user(chat_id, "context", [])
-        send_msg(chat_id, "🗑 Очищено!", reply_kb=main_reply_kb())
-        return
-
+        set_user(chat_id, "context", []); send_msg(chat_id, "🗑 Очищено!", reply_kb=main_reply_kb()); return
     if text == "📌 Избранное":
         favs = get_favorites(chat_id)
-        if favs:
-            msg = "📌 Избранное:\n\n"
-            for i, f in enumerate(favs[-10:], 1):
-                msg += f"{i}. [{f['date']}]\n{f['text'][:200]}\n\n"
-        else:
-            msg = "📌 Пусто."
-        send_msg(chat_id, msg)
-        return
-
+        send_msg(chat_id, "\n\n".join([f"{i+1}. {f['text'][:200]}" for i, f in enumerate(favs[-10:])]) if favs else "Пусто."); return
     if text == "📝 Заметки":
         notes = get_notes(chat_id)
-        if notes:
-            msg = "📝 Заметки:\n\n"
-            for i, n in enumerate(notes[-10:], 1):
-                msg += f"{i}. [{n['date']}]\n{n['text'][:200]}\n\n"
-        else:
-            msg = "📝 Пусто. /note текст"
-        send_msg(chat_id, msg)
-        return
+        send_msg(chat_id, "\n\n".join([f"{i+1}. {n['text'][:200]}" for i, n in enumerate(notes[-10:])]) if notes else "Пусто. /note текст"); return
 
-    quick = {
-        "🔄 Подробнее": "Подробнее. Больше деталей.",
-        "✏️ Переписать": "Перепиши лучше.",
-        "📋 Список": "Оформи списком.",
-        "🎯 Пример": "Пример с цифрами.",
-    }
+    quick = {"🔄 Подробнее": "Подробнее.", "✏️ Переписать": "Перепиши.", "📋 Список": "Списком.", "🎯 Пример": "Пример."}
     if text in quick:
-        send_typing(chat_id)
-        answer = call_ai(get_mode_prompt(chat_id), quick[text], get_context(chat_id))
-        add_context(chat_id, "user", text)
-        add_context(chat_id, "assistant", answer)
-        send_msg(chat_id, answer, inline_kb=after_inline_kb())
-        return
-
+        send_typing(chat_id); a = call_ai(get_mode_prompt(chat_id), quick[text], get_context(chat_id))
+        add_context(chat_id, "user", text); add_context(chat_id, "assistant", a)
+        send_msg(chat_id, a, inline_kb=after_inline_kb()); return
     if text == "🖼 Нарисовать":
-        send_typing(chat_id)
-        prompt = call_ai("Отвечай ТОЛЬКО промтом.", "Короткий промт на английском для картинки. 10 слов макс.", get_context(chat_id))
-        prompt = prompt.strip().strip('"\'`')[:200]
-        send_msg(chat_id, f"🎨 {prompt}\n⏳ Подожди...")
-        send_photo(chat_id, generate_image(prompt), "🖼 " + prompt)
-        return
-
+        send_typing(chat_id); p = call_ai("Промт.", "Промт для картинки. 10 слов англ.", get_context(chat_id)).strip()[:200]
+        send_msg(chat_id, f"🎨 {p}..."); send_photo(chat_id, generate_image(p), p); return
     if text == "🎙 Озвучить":
-        send_typing(chat_id)
         ctx = get_context(chat_id)
-        if not ctx:
-            send_msg(chat_id, "❌ Нечего озвучивать.")
-            return
-        send_msg(chat_id, "🎙 Создаю...")
-        vp = create_voice(ctx[-1]["text"][:500])
-        if vp:
-            send_voice(chat_id, vp)
-        else:
-            send_msg(chat_id, "❌ Ошибка озвучки.")
+        if ctx: send_msg(chat_id, "🎙..."); vp = create_voice(ctx[-1]["text"][:500]); send_voice(chat_id, vp) if vp else send_msg(chat_id, "❌")
         return
-
     if text == "📌 В избранное":
         ctx = get_context(chat_id)
-        if ctx:
-            add_favorite(chat_id, ctx[-1]["text"])
-            send_msg(chat_id, "📌 Добавлено!")
-        else:
-            send_msg(chat_id, "❌ Пусто.")
+        if ctx: add_favorite(chat_id, ctx[-1]["text"]); send_msg(chat_id, "📌!")
         return
-
     if text == "📝 В заметки":
         ctx = get_context(chat_id)
-        if ctx:
-            add_note(chat_id, ctx[-1]["text"])
-            send_msg(chat_id, "📝 Сохранено!")
-        else:
-            send_msg(chat_id, "❌ Пусто.")
+        if ctx: add_note(chat_id, ctx[-1]["text"]); send_msg(chat_id, "📝!")
         return
 
-    # Waiting states
-    waiting = get_user(chat_id, "waiting", "")
-
-    if waiting == "search":
-        set_user(chat_id, "waiting", "")
-        send_typing(chat_id)
-        update_tg_stats(chat_id)
-        results = search_web(text)
-        answer = call_ai(get_mode_prompt(chat_id), f"Поиск '{text}':\n\n{results}\n\nАнализ.", get_context(chat_id))
-        add_context(chat_id, "user", "Поиск: " + text)
-        add_context(chat_id, "assistant", answer)
-        send_msg(chat_id, "🔍 " + text + "\n\n" + answer, reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
+    w = get_user(chat_id, "waiting", "")
+    if w:
+        set_user(chat_id, "waiting", ""); send_typing(chat_id)
+        if w == "search":
+            r = search_web(text); a = call_ai(get_mode_prompt(chat_id), f"Поиск '{text}':\n{r}\nАнализ.", get_context(chat_id))
+            add_context(chat_id, "user", text); add_context(chat_id, "assistant", a)
+            send_msg(chat_id, a, reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
+        elif w == "parse":
+            c = parse_website(text); a = call_ai(get_mode_prompt(chat_id), f"Сайт:\n{c}\nАнализ.", get_context(chat_id))
+            add_context(chat_id, "user", text); add_context(chat_id, "assistant", a)
+            send_msg(chat_id, a, reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
+        elif w == "image":
+            send_msg(chat_id, "🎨..."); send_photo(chat_id, generate_image(text), text[:200])
+        elif w == "voice":
+            send_msg(chat_id, "🎙..."); vp = create_voice(text[:500]); send_voice(chat_id, vp) if vp else send_msg(chat_id, "❌")
+        elif w == "summarize":
+            a = call_ai("Суммаризатор.", "5 мыслей:\n" + text[:3000], [])
+            add_context(chat_id, "user", "Сумм"); add_context(chat_id, "assistant", a)
+            send_msg(chat_id, a, reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
+        elif w in ("enru", "ruen"):
+            lang = "русский" if w == "enru" else "английский"
+            a = call_ai("Переводчик.", f"На {lang}:\n{text}", [])
+            send_msg(chat_id, a, reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
         return
 
-    if waiting == "parse":
-        set_user(chat_id, "waiting", "")
-        send_typing(chat_id)
-        update_tg_stats(chat_id)
-        content = parse_website(text)
-        answer = call_ai(get_mode_prompt(chat_id), f"Сайт {text}:\n\n{content}\n\nАнализ.", get_context(chat_id))
-        add_context(chat_id, "user", "Парсинг: " + text)
-        add_context(chat_id, "assistant", answer)
-        send_msg(chat_id, "🌐\n\n" + answer, reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
-        return
-
-    if waiting == "image":
-        set_user(chat_id, "waiting", "")
-        send_typing(chat_id)
-        send_msg(chat_id, f"🎨 {text}\n⏳ Подожди...")
-        send_photo(chat_id, generate_image(text), "🖼 " + text[:200])
-        return
-
-    if waiting == "voice":
-        set_user(chat_id, "waiting", "")
-        send_typing(chat_id)
-        send_msg(chat_id, "🎙 Создаю...")
-        vp = create_voice(text[:500])
-        if vp:
-            send_voice(chat_id, vp)
-        else:
-            send_msg(chat_id, "❌ Ошибка озвучки.")
-        return
-
-    if waiting == "summarize":
-        set_user(chat_id, "waiting", "")
-        send_typing(chat_id)
-        update_tg_stats(chat_id)
-        answer = call_ai("Суммаризатор.", "5 мыслей:\n\n" + text[:3000], [])
-        add_context(chat_id, "user", "Суммаризация")
-        add_context(chat_id, "assistant", answer)
-        send_msg(chat_id, "📝\n\n" + answer, reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
-        return
-
-    if waiting == "enru":
-        set_user(chat_id, "waiting", "")
-        send_typing(chat_id)
-        answer = call_ai("Переводчик.", "На русский:\n\n" + text, [])
-        send_msg(chat_id, "🇬🇧→🇷🇺\n\n" + answer, reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
-        return
-
-    if waiting == "ruen":
-        set_user(chat_id, "waiting", "")
-        send_typing(chat_id)
-        answer = call_ai("Переводчик.", "На английский:\n\n" + text, [])
-        send_msg(chat_id, "🇷🇺→🇬🇧\n\n" + answer, reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
-        return
-
-    # Default AI
-    send_typing(chat_id)
-    update_tg_stats(chat_id)
-    track_activity("message")
-    answer = call_ai(get_mode_prompt(chat_id), text, get_context(chat_id))
-    add_context(chat_id, "user", text)
-    add_context(chat_id, "assistant", answer)
+    send_typing(chat_id); update_tg_stats(chat_id); track_activity("message")
+    a = call_ai(get_mode_prompt(chat_id), text, get_context(chat_id))
+    add_context(chat_id, "user", text); add_context(chat_id, "assistant", a)
     add_xp(25, f"Чат: {text[:50]}")
-    send_msg(chat_id, answer, reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
+    send_msg(chat_id, a, reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
 
 
 # ============================================================
-# FLASK ROUTES — TELEGRAM WEBHOOK
+# FLASK ROUTES
 # ============================================================
 
 @app.route("/webhook", methods=["POST"])
@@ -1323,28 +1214,19 @@ def telegram_webhook():
         if not data:
             return "ok"
         if "callback_query" in data:
-            try:
-                handle_callback(data["callback_query"])
-            except Exception as e:
-                print(f"CB error: {e}")
+            try: handle_callback(data["callback_query"])
+            except Exception as e: print(f"CB err: {e}")
             return "ok"
-        message = data.get("message", {})
-        chat_id = message.get("chat", {}).get("id")
-        text = message.get("text", "")
-        if chat_id and text:
-            try:
-                handle_message(chat_id, text)
-            except Exception as e:
-                print(f"Msg error: {e}")
-                send_msg(chat_id, "Ошибка.")
+        msg = data.get("message", {})
+        cid = msg.get("chat", {}).get("id")
+        txt = msg.get("text", "")
+        if cid and txt:
+            try: handle_message(cid, txt)
+            except Exception as e: print(f"Msg err: {e}"); send_msg(cid, "Ошибка.")
     except Exception as e:
-        print(f"Webhook error: {e}")
+        print(f"Webhook err: {e}")
     return "ok"
 
-
-# ============================================================
-# FLASK ROUTES — PAGES
-# ============================================================
 
 @app.route("/", methods=["GET"])
 def home():
@@ -1358,15 +1240,11 @@ def web_chat():
             return f.read()
     except Exception as e:
         return f"Error: {e}", 500
-        
 
 
-# ============================================================
-# FLASK ROUTES — WEB API CHAT
-# ============================================================
+# === WEB API — CHAT ===
 
 web_sessions = {}
-
 
 def get_web_session(sid):
     if sid not in web_sessions:
@@ -1377,50 +1255,28 @@ def get_web_session(sid):
 @app.route("/api/send", methods=["POST"])
 def api_send():
     try:
-        data = request.get_json()
-        if not data:
-            return json.dumps({"error": "no data"}), 400, {"Content-Type": "application/json"}
-
-        sid = data.get("session_id", "")
-        text = data.get("text", "").strip()
-        if not sid or not text:
+        d = request.get_json(); sid = d.get("session_id", ""); txt = d.get("text", "").strip()
+        if not sid or not txt:
             return json.dumps({"error": "empty"}), 400, {"Content-Type": "application/json"}
-
-        session = get_web_session(sid)
-        prompt = MODES.get(session["mode"], MODES["helper"])["prompt"]
-
-        session["context"].append({"role": "user", "text": text[:1000]})
-        if len(session["context"]) > 20:
-            session["context"] = session["context"][-20:]
-
-        answer = call_ai(prompt, text, session["context"])
-
-        session["context"].append({"role": "assistant", "text": answer[:1000]})
-        if len(session["context"]) > 20:
-            session["context"] = session["context"][-20:]
-
-        track_activity("message")
-        add_xp(25, f"Web: {text[:50]}")
-
-        return json.dumps({"answer": answer, "time": time.strftime("%H:%M")}, ensure_ascii=False), 200, {
-            "Content-Type": "application/json"}
+        s = get_web_session(sid)
+        s["context"].append({"role": "user", "text": txt[:1000]})
+        s["context"] = s["context"][-20:]
+        a = call_ai(MODES.get(s["mode"], MODES["helper"])["prompt"], txt, s["context"])
+        s["context"].append({"role": "assistant", "text": a[:1000]})
+        s["context"] = s["context"][-20:]
+        track_activity("message"); add_xp(25, f"Web: {txt[:50]}")
+        return json.dumps({"answer": a, "time": time.strftime("%H:%M")}, ensure_ascii=False), 200, {"Content-Type": "application/json"}
     except Exception as e:
-        print(f"API send error: {e}")
         return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
 
 
 @app.route("/api/mode", methods=["POST"])
 def api_mode():
     try:
-        data = request.get_json()
-        sid = data.get("session_id", "")
-        mode = data.get("mode", "helper")
-        if sid and mode in MODES:
-            session = get_web_session(sid)
-            session["mode"] = mode
-            session["context"] = []
-            return json.dumps({"ok": True, "mode": MODES[mode]}, ensure_ascii=False), 200, {
-                "Content-Type": "application/json"}
+        d = request.get_json(); sid = d.get("session_id", ""); m = d.get("mode", "helper")
+        if sid and m in MODES:
+            s = get_web_session(sid); s["mode"] = m; s["context"] = []
+            return json.dumps({"ok": True, "mode": MODES[m]}, ensure_ascii=False), 200, {"Content-Type": "application/json"}
         return json.dumps({"error": "invalid"}), 400, {"Content-Type": "application/json"}
     except Exception as e:
         return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
@@ -1429,31 +1285,25 @@ def api_mode():
 @app.route("/api/clear", methods=["POST"])
 def api_clear():
     try:
-        data = request.get_json()
-        sid = data.get("session_id", "")
-        if sid and sid in web_sessions:
-            web_sessions[sid] = {"mode": "helper", "context": []}
+        d = request.get_json(); sid = d.get("session_id", "")
+        if sid in web_sessions: web_sessions[sid] = {"mode": "helper", "context": []}
         return json.dumps({"ok": True}), 200, {"Content-Type": "application/json"}
     except Exception as e:
         return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
 
 
-# ============================================================
-# FLASK ROUTES — PROJECTS
-# ============================================================
+# === PROJECTS ===
 
 @app.route("/api/projects", methods=["GET"])
 def api_get_projects():
     try:
-        data = read_json("projects.json", {"projects": []})
-        status = request.args.get("status", "")
-        stage = request.args.get("stage", "")
-        projects = data.get("projects", [])
-        if status:
-            projects = [p for p in projects if p.get("status") == status]
-        if stage:
-            projects = [p for p in projects if p.get("stage") == stage]
-        return json.dumps({"projects": projects}, ensure_ascii=False), 200, {"Content-Type": "application/json"}
+        d = read_json("projects.json", {"projects": []})
+        ps = d.get("projects", [])
+        st = request.args.get("status", ""); sg = request.args.get("stage", ""); tg = request.args.get("tag", "")
+        if st: ps = [p for p in ps if p.get("status") == st]
+        if sg: ps = [p for p in ps if p.get("stage") == sg]
+        if tg: ps = [p for p in ps if tg in p.get("tags", [])]
+        return json.dumps({"projects": ps}, ensure_ascii=False), 200, {"Content-Type": "application/json"}
     except Exception as e:
         return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
 
@@ -1461,274 +1311,231 @@ def api_get_projects():
 @app.route("/api/projects", methods=["POST"])
 def api_create_project():
     try:
-        req = request.get_json()
-        data = read_json("projects.json", {"projects": []})
-        new_project = {
-            "id": str(int(time.time() * 1000)),
-            "name": req.get("name", "Без названия"),
-            "description": req.get("description", ""),
-            "monetization": req.get("monetization", ""),
-            "status": "active",
-            "stage": "idea",
+        r = request.get_json(); d = read_json("projects.json", {"projects": []})
+        p = {
+            "id": str(int(time.time() * 1000)), "name": r.get("name", "Без названия"),
+            "description": r.get("description", ""), "monetization": r.get("monetization", ""),
+            "status": "active", "stage": "idea", "tags": r.get("tags", []),
             "stage_history": [{"to": "idea", "date": datetime.now().isoformat()}],
-            "sprint": 1,
-            "revenue": 0,
-            "revenue_history": [],
-            "links": [],
-            "notes": [],
+            "sprint": 1, "revenue": 0, "revenue_history": [],
+            "links": [], "notes": [], "score": None,
             "created_at": datetime.now().isoformat()
         }
-        data["projects"].append(new_project)
-        write_json("projects.json", data)
-        add_xp(100, f"Новый проект: {new_project['name']}")
-
-        threading.Thread(target=auto_generate_quests, args=(new_project,), daemon=True).start()
-
-        return json.dumps(new_project, ensure_ascii=False), 200, {"Content-Type": "application/json"}
+        d["projects"].append(p); write_json("projects.json", d)
+        add_xp(100, f"Проект: {p['name']}")
+        threading.Thread(target=auto_generate_quests, args=(p,), daemon=True).start()
+        return json.dumps(p, ensure_ascii=False), 200, {"Content-Type": "application/json"}
     except Exception as e:
         return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
 
 
-@app.route("/api/projects/<project_id>", methods=["GET"])
-def api_get_project(project_id):
+@app.route("/api/projects/<pid>", methods=["GET"])
+def api_get_project(pid):
     try:
-        data = read_json("projects.json", {"projects": []})
-        for p in data["projects"]:
-            if p["id"] == project_id:
-                quests = read_json("quests.json", {"quests": []})
-                p["quests"] = [q for q in quests["quests"] if q.get("project_id") == project_id]
+        d = read_json("projects.json", {"projects": []})
+        for p in d["projects"]:
+            if p["id"] == pid:
+                q = read_json("quests.json", {"quests": []})
+                p["quests"] = [x for x in q["quests"] if x.get("project_id") == pid]
+                p["sprints"] = get_project_sprints(pid)
+                # Проверка дедлайна стадии
+                stage = p.get("stage", "idea")
+                hist = p.get("stage_history", [])
+                if hist:
+                    try:
+                        last = date.fromisoformat(hist[-1].get("date", "")[:10])
+                        days = (date.today() - last).days
+                        deadline = STAGE_DEADLINE_DAYS.get(stage, 7)
+                        p["days_in_stage"] = days
+                        p["stage_deadline"] = deadline
+                        p["stage_overdue"] = deadline > 0 and days > deadline
+                    except Exception:
+                        pass
                 return json.dumps(p, ensure_ascii=False), 200, {"Content-Type": "application/json"}
         return json.dumps({"error": "Не найден"}), 404, {"Content-Type": "application/json"}
     except Exception as e:
         return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
 
 
-@app.route("/api/projects/<project_id>", methods=["PUT"])
-def api_update_project(project_id):
+@app.route("/api/projects/<pid>", methods=["PUT"])
+def api_update_project(pid):
     try:
-        data = read_json("projects.json", {"projects": []})
-        req = request.get_json()
-        for i, p in enumerate(data["projects"]):
-            if p["id"] == project_id:
-                safe_fields = ["name", "description", "monetization", "status", "sprint"]
-                for field in safe_fields:
-                    if field in req:
-                        data["projects"][i][field] = req[field]
-                write_json("projects.json", data)
-                return json.dumps(data["projects"][i], ensure_ascii=False), 200, {"Content-Type": "application/json"}
+        d = read_json("projects.json", {"projects": []}); r = request.get_json()
+        for i, p in enumerate(d["projects"]):
+            if p["id"] == pid:
+                for f in ["name", "description", "monetization", "status", "sprint", "tags"]:
+                    if f in r: d["projects"][i][f] = r[f]
+                write_json("projects.json", d)
+                return json.dumps(d["projects"][i], ensure_ascii=False), 200, {"Content-Type": "application/json"}
         return json.dumps({"error": "Не найден"}), 404, {"Content-Type": "application/json"}
     except Exception as e:
         return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
 
 
-@app.route("/api/projects/<project_id>", methods=["DELETE"])
-def api_delete_project(project_id):
+@app.route("/api/projects/<pid>", methods=["DELETE"])
+def api_delete_project(pid):
     try:
-        data = read_json("projects.json", {"projects": []})
-        for i, p in enumerate(data["projects"]):
-            if p["id"] == project_id:
-                data["projects"][i]["status"] = "archived"
-                data["projects"][i]["archived_at"] = datetime.now().isoformat()
-                write_json("projects.json", data)
-                return json.dumps({"ok": True, "archived": True}), 200, {"Content-Type": "application/json"}
-        return json.dumps({"error": "Не найден"}), 404, {"Content-Type": "application/json"}
-    except Exception as e:
-        return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
-
-
-@app.route("/api/projects/<project_id>/restore", methods=["POST"])
-def api_restore_project(project_id):
-    try:
-        data = read_json("projects.json", {"projects": []})
-        for i, p in enumerate(data["projects"]):
-            if p["id"] == project_id:
-                data["projects"][i]["status"] = "active"
-                data["projects"][i].pop("archived_at", None)
-                write_json("projects.json", data)
-                return json.dumps(data["projects"][i], ensure_ascii=False), 200, {"Content-Type": "application/json"}
-        return json.dumps({"error": "Не найден"}), 404, {"Content-Type": "application/json"}
-    except Exception as e:
-        return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
-
-
-@app.route("/api/projects/<project_id>/stage", methods=["PUT"])
-def api_update_stage(project_id):
-    try:
-        data = read_json("projects.json", {"projects": []})
-        req = request.get_json()
-        new_stage = req.get("stage", "idea")
-
-        if new_stage not in FUNNEL_STAGES:
-            return json.dumps({"error": "Invalid stage"}), 400, {"Content-Type": "application/json"}
-
-        for i, p in enumerate(data["projects"]):
-            if p["id"] == project_id:
-                old_stage = p.get("stage", "idea")
-                data["projects"][i]["stage"] = new_stage
-
-                history = data["projects"][i].get("stage_history", [])
-                history.append({
-                    "from": old_stage,
-                    "to": new_stage,
-                    "date": datetime.now().isoformat()
-                })
-                data["projects"][i]["stage_history"] = history
-                write_json("projects.json", data)
-
-                old_idx = FUNNEL_STAGES.index(old_stage) if old_stage in FUNNEL_STAGES else 0
-                new_idx = FUNNEL_STAGES.index(new_stage)
-                if new_idx > old_idx:
-                    xp = FUNNEL_XP.get(new_stage, 0)
-                    add_xp(xp, f"Стадия: {FUNNEL_NAMES[new_stage]}")
-
-                return json.dumps(data["projects"][i], ensure_ascii=False), 200, {"Content-Type": "application/json"}
-        return json.dumps({"error": "Не найден"}), 404, {"Content-Type": "application/json"}
-    except Exception as e:
-        return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
-
-
-@app.route("/api/projects/<project_id>/revenue", methods=["POST"])
-def api_add_revenue(project_id):
-    try:
-        data = read_json("projects.json", {"projects": []})
-        req = request.get_json()
-        amount = req.get("amount", 0)
-        for i, p in enumerate(data["projects"]):
-            if p["id"] == project_id:
-                data["projects"][i]["revenue"] = data["projects"][i].get("revenue", 0) + amount
-                rev_history = data["projects"][i].get("revenue_history", [])
-                rev_history.append({
-                    "amount": amount,
-                    "date": datetime.now().isoformat(),
-                    "note": req.get("note", "")
-                })
-                data["projects"][i]["revenue_history"] = rev_history
-                write_json("projects.json", data)
-                add_xp(50, f"Доход +${amount}")
-                return json.dumps(data["projects"][i], ensure_ascii=False), 200, {"Content-Type": "application/json"}
-        return json.dumps({"error": "Не найден"}), 404, {"Content-Type": "application/json"}
-    except Exception as e:
-        return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
-
-
-@app.route("/api/projects/<project_id>/links", methods=["POST"])
-def api_add_link(project_id):
-    try:
-        data = read_json("projects.json", {"projects": []})
-        req = request.get_json()
-        for i, p in enumerate(data["projects"]):
-            if p["id"] == project_id:
-                links = data["projects"][i].get("links", [])
-                links.append({
-                    "id": str(int(time.time() * 1000)),
-                    "url": req.get("url", ""),
-                    "title": req.get("title", ""),
-                    "added": datetime.now().isoformat()
-                })
-                data["projects"][i]["links"] = links
-                write_json("projects.json", data)
-                return json.dumps(data["projects"][i], ensure_ascii=False), 200, {"Content-Type": "application/json"}
-        return json.dumps({"error": "Не найден"}), 404, {"Content-Type": "application/json"}
-    except Exception as e:
-        return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
-
-
-@app.route("/api/projects/<project_id>/links/<link_id>", methods=["DELETE"])
-def api_delete_link(project_id, link_id):
-    try:
-        data = read_json("projects.json", {"projects": []})
-        for i, p in enumerate(data["projects"]):
-            if p["id"] == project_id:
-                data["projects"][i]["links"] = [l for l in p.get("links", []) if l.get("id") != link_id]
-                write_json("projects.json", data)
+        d = read_json("projects.json", {"projects": []})
+        for i, p in enumerate(d["projects"]):
+            if p["id"] == pid:
+                d["projects"][i]["status"] = "archived"
+                d["projects"][i]["archived_at"] = datetime.now().isoformat()
+                write_json("projects.json", d)
                 return json.dumps({"ok": True}), 200, {"Content-Type": "application/json"}
         return json.dumps({"error": "Не найден"}), 404, {"Content-Type": "application/json"}
     except Exception as e:
         return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
 
 
-@app.route("/api/projects/<project_id>/notes", methods=["POST"])
-def api_add_project_note(project_id):
+@app.route("/api/projects/<pid>/restore", methods=["POST"])
+def api_restore_project(pid):
     try:
-        data = read_json("projects.json", {"projects": []})
-        req = request.get_json()
-        for i, p in enumerate(data["projects"]):
-            if p["id"] == project_id:
-                notes = data["projects"][i].get("notes", [])
-                notes.append({
-                    "id": str(int(time.time() * 1000)),
-                    "text": req.get("text", ""),
-                    "added": datetime.now().isoformat()
-                })
-                data["projects"][i]["notes"] = notes
-                write_json("projects.json", data)
-                return json.dumps(data["projects"][i], ensure_ascii=False), 200, {"Content-Type": "application/json"}
+        d = read_json("projects.json", {"projects": []})
+        for i, p in enumerate(d["projects"]):
+            if p["id"] == pid:
+                d["projects"][i]["status"] = "active"; d["projects"][i].pop("archived_at", None)
+                write_json("projects.json", d)
+                return json.dumps(d["projects"][i], ensure_ascii=False), 200, {"Content-Type": "application/json"}
         return json.dumps({"error": "Не найден"}), 404, {"Content-Type": "application/json"}
     except Exception as e:
         return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
 
 
-@app.route("/api/projects/<project_id>/notes/<note_id>", methods=["DELETE"])
-def api_delete_project_note(project_id, note_id):
+@app.route("/api/projects/<pid>/stage", methods=["PUT"])
+def api_update_stage(pid):
     try:
-        data = read_json("projects.json", {"projects": []})
-        for i, p in enumerate(data["projects"]):
-            if p["id"] == project_id:
-                data["projects"][i]["notes"] = [n for n in p.get("notes", []) if n.get("id") != note_id]
-                write_json("projects.json", data)
+        d = read_json("projects.json", {"projects": []}); r = request.get_json()
+        ns = r.get("stage", "idea")
+        if ns not in FUNNEL_STAGES:
+            return json.dumps({"error": "Invalid"}), 400, {"Content-Type": "application/json"}
+        for i, p in enumerate(d["projects"]):
+            if p["id"] == pid:
+                os_ = p.get("stage", "idea"); d["projects"][i]["stage"] = ns
+                h = d["projects"][i].get("stage_history", [])
+                h.append({"from": os_, "to": ns, "date": datetime.now().isoformat()})
+                d["projects"][i]["stage_history"] = h
+                write_json("projects.json", d)
+                oi = FUNNEL_STAGES.index(os_) if os_ in FUNNEL_STAGES else 0
+                ni = FUNNEL_STAGES.index(ns)
+                if ni > oi: add_xp(FUNNEL_XP.get(ns, 0), f"Стадия: {FUNNEL_NAMES[ns]}")
+                return json.dumps(d["projects"][i], ensure_ascii=False), 200, {"Content-Type": "application/json"}
+        return json.dumps({"error": "Не найден"}), 404, {"Content-Type": "application/json"}
+    except Exception as e:
+        return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
+
+
+@app.route("/api/projects/<pid>/revenue", methods=["POST"])
+def api_add_revenue(pid):
+    try:
+        d = read_json("projects.json", {"projects": []}); r = request.get_json()
+        amt = r.get("amount", 0)
+        for i, p in enumerate(d["projects"]):
+            if p["id"] == pid:
+                d["projects"][i]["revenue"] = d["projects"][i].get("revenue", 0) + amt
+                rh = d["projects"][i].get("revenue_history", [])
+                rh.append({"amount": amt, "date": datetime.now().isoformat(), "note": r.get("note", "")})
+                d["projects"][i]["revenue_history"] = rh
+                write_json("projects.json", d); add_xp(50, f"+${amt}")
+                return json.dumps(d["projects"][i], ensure_ascii=False), 200, {"Content-Type": "application/json"}
+        return json.dumps({"error": "Не найден"}), 404, {"Content-Type": "application/json"}
+    except Exception as e:
+        return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
+
+
+@app.route("/api/projects/<pid>/links", methods=["POST"])
+def api_add_link(pid):
+    try:
+        d = read_json("projects.json", {"projects": []}); r = request.get_json()
+        for i, p in enumerate(d["projects"]):
+            if p["id"] == pid:
+                ls = d["projects"][i].get("links", [])
+                ls.append({"id": str(int(time.time()*1000)), "url": r.get("url",""), "title": r.get("title",""), "added": datetime.now().isoformat()})
+                d["projects"][i]["links"] = ls; write_json("projects.json", d)
+                return json.dumps(d["projects"][i], ensure_ascii=False), 200, {"Content-Type": "application/json"}
+        return json.dumps({"error": "Не найден"}), 404, {"Content-Type": "application/json"}
+    except Exception as e:
+        return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
+
+
+@app.route("/api/projects/<pid>/links/<lid>", methods=["DELETE"])
+def api_delete_link(pid, lid):
+    try:
+        d = read_json("projects.json", {"projects": []})
+        for i, p in enumerate(d["projects"]):
+            if p["id"] == pid:
+                d["projects"][i]["links"] = [l for l in p.get("links", []) if l.get("id") != lid]
+                write_json("projects.json", d)
                 return json.dumps({"ok": True}), 200, {"Content-Type": "application/json"}
         return json.dumps({"error": "Не найден"}), 404, {"Content-Type": "application/json"}
     except Exception as e:
         return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
 
 
-@app.route("/api/projects/<project_id>/offer", methods=["POST"])
-def api_generate_offer(project_id):
+@app.route("/api/projects/<pid>/notes", methods=["POST"])
+def api_add_note(pid):
     try:
-        data = read_json("projects.json", {"projects": []})
-        for p in data["projects"]:
-            if p["id"] == project_id:
-                offer = generate_offer(p)
-                add_xp(50, f"Оффер: {p.get('name', '')}")
-                return json.dumps({"offer": offer}, ensure_ascii=False), 200, {"Content-Type": "application/json"}
+        d = read_json("projects.json", {"projects": []}); r = request.get_json()
+        for i, p in enumerate(d["projects"]):
+            if p["id"] == pid:
+                ns = d["projects"][i].get("notes", [])
+                ns.append({"id": str(int(time.time()*1000)), "text": r.get("text",""), "added": datetime.now().isoformat()})
+                d["projects"][i]["notes"] = ns; write_json("projects.json", d)
+                return json.dumps(d["projects"][i], ensure_ascii=False), 200, {"Content-Type": "application/json"}
         return json.dumps({"error": "Не найден"}), 404, {"Content-Type": "application/json"}
     except Exception as e:
         return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
 
 
-# ============================================================
-# FLASK ROUTES — FUNNEL
-# ============================================================
+@app.route("/api/projects/<pid>/notes/<nid>", methods=["DELETE"])
+def api_delete_note(pid, nid):
+    try:
+        d = read_json("projects.json", {"projects": []})
+        for i, p in enumerate(d["projects"]):
+            if p["id"] == pid:
+                d["projects"][i]["notes"] = [n for n in p.get("notes", []) if n.get("id") != nid]
+                write_json("projects.json", d)
+                return json.dumps({"ok": True}), 200, {"Content-Type": "application/json"}
+        return json.dumps({"error": "Не найден"}), 404, {"Content-Type": "application/json"}
+    except Exception as e:
+        return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
+
+
+@app.route("/api/projects/<pid>/offer", methods=["POST"])
+def api_offer(pid):
+    try:
+        d = read_json("projects.json", {"projects": []})
+        for p in d["projects"]:
+            if p["id"] == pid:
+                o = generate_offer(p); add_xp(50, f"Оффер: {p.get('name','')}")
+                return json.dumps({"offer": o}, ensure_ascii=False), 200, {"Content-Type": "application/json"}
+        return json.dumps({"error": "Не найден"}), 404, {"Content-Type": "application/json"}
+    except Exception as e:
+        return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
+
+
+# === FUNNEL ===
 
 @app.route("/api/funnel", methods=["GET"])
-def api_get_funnel():
+def api_funnel():
     try:
-        data = read_json("projects.json", {"projects": []})
-        funnel = {}
-        for stage in FUNNEL_STAGES:
-            funnel[stage] = {
-                "name": FUNNEL_NAMES[stage],
-                "projects": [p for p in data["projects"]
-                             if p.get("stage", "idea") == stage
-                             and p.get("status") != "archived"]
-            }
-        return json.dumps(funnel, ensure_ascii=False), 200, {"Content-Type": "application/json"}
+        d = read_json("projects.json", {"projects": []})
+        f = {}
+        for s in FUNNEL_STAGES:
+            f[s] = {"name": FUNNEL_NAMES[s], "projects": [p for p in d["projects"] if p.get("stage","idea")==s and p.get("status")!="archived"]}
+        return json.dumps(f, ensure_ascii=False), 200, {"Content-Type": "application/json"}
     except Exception as e:
         return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
 
 
-# ============================================================
-# FLASK ROUTES — QUESTS
-# ============================================================
+# === QUESTS ===
 
 @app.route("/api/quests", methods=["GET"])
 def api_get_quests():
     try:
-        data = read_json("quests.json", {"quests": []})
-        project_id = request.args.get("project_id", "")
-        if project_id:
-            data["quests"] = [q for q in data["quests"] if q.get("project_id") == project_id]
-        return json.dumps(data, ensure_ascii=False), 200, {"Content-Type": "application/json"}
+        d = read_json("quests.json", {"quests": []})
+        pid = request.args.get("project_id", "")
+        if pid: d["quests"] = [q for q in d["quests"] if q.get("project_id") == pid]
+        return json.dumps(d, ensure_ascii=False), 200, {"Content-Type": "application/json"}
     except Exception as e:
         return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
 
@@ -1736,89 +1543,115 @@ def api_get_quests():
 @app.route("/api/quests", methods=["POST"])
 def api_create_quest():
     try:
-        data = read_json("quests.json", {"quests": []})
-        req = request.get_json()
-        tasks = [{"text": t, "done": False} if isinstance(t, str) else t for t in req.get("tasks", [])]
-        quest = {
-            "id": str(int(time.time() * 1000)),
-            "name": req.get("name", ""),
-            "priority": req.get("priority", "normal"),
-            "xp_reward": req.get("xp_reward", 100),
-            "tasks": tasks,
-            "completed": False,
-            "project_id": req.get("project_id", ""),
-            "created_at": datetime.now().isoformat()
-        }
-        data["quests"].append(quest)
-        write_json("quests.json", data)
-        return json.dumps(quest, ensure_ascii=False), 200, {"Content-Type": "application/json"}
+        d = read_json("quests.json", {"quests": []}); r = request.get_json()
+        ts = [{"text": t, "done": False} if isinstance(t, str) else t for t in r.get("tasks", [])]
+        q = {"id": str(int(time.time()*1000)), "name": r.get("name",""), "priority": r.get("priority","normal"),
+             "xp_reward": r.get("xp_reward",100), "tasks": ts, "completed": False,
+             "project_id": r.get("project_id",""), "created_at": datetime.now().isoformat()}
+        d["quests"].append(q); write_json("quests.json", d)
+        return json.dumps(q, ensure_ascii=False), 200, {"Content-Type": "application/json"}
     except Exception as e:
         return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
 
 
-@app.route("/api/quests/<quest_id>", methods=["PUT"])
-def api_update_quest(quest_id):
+@app.route("/api/quests/<qid>", methods=["PUT"])
+def api_update_quest(qid):
     try:
-        data = read_json("quests.json", {"quests": []})
-        req = request.get_json()
-        for i, q in enumerate(data["quests"]):
-            if q["id"] == quest_id:
-                was_completed = q.get("completed", False)
-                data["quests"][i].update(req)
-                if req.get("completed") and not was_completed:
-                    add_xp(q.get("xp_reward", 100), f"Квест: {q.get('name', '')}")
-                    data["quests"][i]["completed_at"] = datetime.now().isoformat()
-                write_json("quests.json", data)
-                return json.dumps(data["quests"][i], ensure_ascii=False), 200, {"Content-Type": "application/json"}
+        d = read_json("quests.json", {"quests": []}); r = request.get_json()
+        for i, q in enumerate(d["quests"]):
+            if q["id"] == qid:
+                wc = q.get("completed", False); d["quests"][i].update(r)
+                if r.get("completed") and not wc:
+                    add_xp(q.get("xp_reward",100), f"Квест: {q.get('name','')}")
+                    d["quests"][i]["completed_at"] = datetime.now().isoformat()
+                write_json("quests.json", d)
+                return json.dumps(d["quests"][i], ensure_ascii=False), 200, {"Content-Type": "application/json"}
         return json.dumps({"error": "Не найден"}), 404, {"Content-Type": "application/json"}
     except Exception as e:
         return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
 
 
-@app.route("/api/quests/<quest_id>", methods=["DELETE"])
-def api_delete_quest(quest_id):
+@app.route("/api/quests/<qid>", methods=["DELETE"])
+def api_delete_quest(qid):
     try:
-        data = read_json("quests.json", {"quests": []})
-        data["quests"] = [q for q in data["quests"] if q["id"] != quest_id]
-        write_json("quests.json", data)
+        d = read_json("quests.json", {"quests": []})
+        d["quests"] = [q for q in d["quests"] if q["id"] != qid]; write_json("quests.json", d)
         return json.dumps({"ok": True}), 200, {"Content-Type": "application/json"}
     except Exception as e:
         return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
 
 
-@app.route("/api/quests/<quest_id>/toggle-task", methods=["POST"])
-def api_toggle_quest_task(quest_id):
+@app.route("/api/quests/<qid>/toggle-task", methods=["POST"])
+def api_toggle_task(qid):
     try:
-        data = read_json("quests.json", {"quests": []})
-        req = request.get_json()
-        task_idx = req.get("index", 0)
-
-        for i, q in enumerate(data["quests"]):
-            if q["id"] == quest_id:
-                tasks = q.get("tasks", [])
-                if 0 <= task_idx < len(tasks):
-                    tasks[task_idx]["done"] = not tasks[task_idx]["done"]
-                    data["quests"][i]["tasks"] = tasks
-
-                    all_done = all(t.get("done", False) for t in tasks)
-                    if all_done and not q.get("completed"):
-                        data["quests"][i]["completed"] = True
-                        data["quests"][i]["completed_at"] = datetime.now().isoformat()
-                        add_xp(q.get("xp_reward", 100), f"Квест: {q.get('name', '')}")
-
-                    write_json("quests.json", data)
-                    return json.dumps(data["quests"][i], ensure_ascii=False), 200, {"Content-Type": "application/json"}
+        d = read_json("quests.json", {"quests": []}); r = request.get_json(); idx = r.get("index", 0)
+        for i, q in enumerate(d["quests"]):
+            if q["id"] == qid:
+                ts = q.get("tasks", [])
+                if 0 <= idx < len(ts):
+                    ts[idx]["done"] = not ts[idx]["done"]; d["quests"][i]["tasks"] = ts
+                    if all(t.get("done") for t in ts) and not q.get("completed"):
+                        d["quests"][i]["completed"] = True
+                        d["quests"][i]["completed_at"] = datetime.now().isoformat()
+                        add_xp(q.get("xp_reward",100), f"Квест: {q.get('name','')}")
+                    write_json("quests.json", d)
+                    return json.dumps(d["quests"][i], ensure_ascii=False), 200, {"Content-Type": "application/json"}
         return json.dumps({"error": "Не найден"}), 404, {"Content-Type": "application/json"}
     except Exception as e:
         return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
 
 
-# ============================================================
-# FLASK ROUTES — PLAYER & GAMIFICATION
-# ============================================================
+# === SPRINTS ===
+
+@app.route("/api/sprints", methods=["GET"])
+def api_get_sprints():
+    try:
+        d = read_json("sprints.json", {"sprints": []})
+        pid = request.args.get("project_id", "")
+        if pid: d["sprints"] = [s for s in d["sprints"] if s.get("project_id") == pid]
+        return json.dumps(d, ensure_ascii=False), 200, {"Content-Type": "application/json"}
+    except Exception as e:
+        return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
+
+
+@app.route("/api/sprints", methods=["POST"])
+def api_create_sprint():
+    try:
+        r = request.get_json()
+        tasks = r.get("tasks", [])
+        s = create_sprint(r.get("project_id", ""), r.get("name", "Спринт"), tasks, r.get("duration", 7))
+        return json.dumps(s, ensure_ascii=False), 200, {"Content-Type": "application/json"}
+    except Exception as e:
+        return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
+
+
+@app.route("/api/sprints/<sid>/toggle-task", methods=["POST"])
+def api_toggle_sprint_task(sid):
+    try:
+        d = read_json("sprints.json", {"sprints": []}); r = request.get_json(); idx = r.get("index", 0)
+        for i, s in enumerate(d["sprints"]):
+            if s["id"] == sid:
+                ts = s.get("tasks", [])
+                if 0 <= idx < len(ts):
+                    ts[idx]["done"] = not ts[idx]["done"]; d["sprints"][i]["tasks"] = ts
+                    if all(t.get("done") for t in ts) and not s.get("completed"):
+                        d["sprints"][i]["completed"] = True
+                        d["sprints"][i]["completed_at"] = datetime.now().isoformat()
+                        player = get_player()
+                        player["completed_sprints"] = player.get("completed_sprints", 0) + 1
+                        write_json("player.json", player)
+                        add_xp(300, f"Спринт: {s.get('name','')}")
+                    write_json("sprints.json", d)
+                    return json.dumps(d["sprints"][i], ensure_ascii=False), 200, {"Content-Type": "application/json"}
+        return json.dumps({"error": "Не найден"}), 404, {"Content-Type": "application/json"}
+    except Exception as e:
+        return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
+
+
+# === PLAYER ===
 
 @app.route("/api/player", methods=["GET"])
-def api_get_player():
+def api_player():
     try:
         return json.dumps(get_player(), ensure_ascii=False), 200, {"Content-Type": "application/json"}
     except Exception as e:
@@ -1828,38 +1661,25 @@ def api_get_player():
 @app.route("/api/player/add-xp", methods=["POST"])
 def api_add_xp():
     try:
-        req = request.get_json()
-        player, leveled, new_ach = add_xp(req.get("amount", 0), req.get("reason", ""))
-        return json.dumps({
-            "player": player,
-            "leveled": leveled,
-            "new_achievements": [{"name": a["name"], "icon": a["icon"]} for a in new_ach]
-        }, ensure_ascii=False), 200, {"Content-Type": "application/json"}
+        r = request.get_json(); p, l, a = add_xp(r.get("amount", 0), r.get("reason", ""))
+        return json.dumps({"player": p, "leveled": l, "new_achievements": [{"name": x["name"], "icon": x["icon"]} for x in a]},
+                          ensure_ascii=False), 200, {"Content-Type": "application/json"}
     except Exception as e:
         return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
 
 
 @app.route("/api/achievements", methods=["GET"])
-def api_get_achievements():
+def api_achievements():
     try:
-        player = get_player()
-        unlocked = player.get("unlocked", [])
-        result = []
-        for ach_id, ach in ACHIEVEMENTS.items():
-            result.append({
-                "id": ach_id,
-                "name": ach["name"],
-                "icon": ach["icon"],
-                "desc": ach["desc"],
-                "unlocked": ach_id in unlocked
-            })
-        return json.dumps(result, ensure_ascii=False), 200, {"Content-Type": "application/json"}
+        p = get_player(); u = p.get("unlocked", [])
+        r = [{"id": k, "name": v["name"], "icon": v["icon"], "desc": v["desc"], "unlocked": k in u} for k, v in ACHIEVEMENTS.items()]
+        return json.dumps(r, ensure_ascii=False), 200, {"Content-Type": "application/json"}
     except Exception as e:
         return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
 
 
 @app.route("/api/mission", methods=["GET"])
-def api_get_mission():
+def api_mission():
     try:
         return json.dumps(get_weekly_mission(), ensure_ascii=False), 200, {"Content-Type": "application/json"}
     except Exception as e:
@@ -1869,213 +1689,210 @@ def api_get_mission():
 @app.route("/api/mission/toggle", methods=["POST"])
 def api_toggle_mission():
     try:
-        req = request.get_json()
-        idx = req.get("index", 0)
-        mission = get_weekly_mission()
-        if 0 <= idx < len(mission.get("tasks", [])):
-            mission["tasks"][idx]["done"] = not mission["tasks"][idx]["done"]
-            all_done = all(t["done"] for t in mission["tasks"])
-            if all_done and not mission.get("completed"):
-                add_xp(mission.get("xp_reward", 500), "Миссия недели завершена!")
-                mission["completed"] = True
-            write_json("mission.json", mission)
-        return json.dumps(mission, ensure_ascii=False), 200, {"Content-Type": "application/json"}
+        r = request.get_json(); idx = r.get("index", 0); m = get_weekly_mission()
+        if 0 <= idx < len(m.get("tasks", [])):
+            m["tasks"][idx]["done"] = not m["tasks"][idx]["done"]
+            if all(t["done"] for t in m["tasks"]) and not m.get("completed"):
+                add_xp(m.get("xp_reward", 500), "Миссия!"); m["completed"] = True
+            write_json("mission.json", m)
+        return json.dumps(m, ensure_ascii=False), 200, {"Content-Type": "application/json"}
     except Exception as e:
         return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
 
 
-# ============================================================
-# FLASK ROUTES — ANALYTICS
-# ============================================================
+# === DAILY CHALLENGE ===
+
+@app.route("/api/daily", methods=["GET"])
+def api_daily():
+    try:
+        return json.dumps(get_daily_challenge(), ensure_ascii=False), 200, {"Content-Type": "application/json"}
+    except Exception as e:
+        return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
+
+
+@app.route("/api/daily/complete", methods=["POST"])
+def api_complete_daily():
+    try:
+        r = request.get_json(); d, xp = complete_daily_challenge(r.get("index", 0))
+        return json.dumps({"daily": d, "xp_earned": xp}, ensure_ascii=False), 200, {"Content-Type": "application/json"}
+    except Exception as e:
+        return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
+
+
+# === DAILY PLANNER ===
+
+@app.route("/api/daily-plan", methods=["GET"])
+def api_daily_plan():
+    try:
+        return json.dumps(generate_daily_plan(), ensure_ascii=False), 200, {"Content-Type": "application/json"}
+    except Exception as e:
+        return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
+
+
+# === PAINS DATABASE ===
+
+@app.route("/api/pains", methods=["GET"])
+def api_get_pains():
+    try:
+        d = read_json("pains.json", {"pains": []})
+        return json.dumps(d, ensure_ascii=False), 200, {"Content-Type": "application/json"}
+    except Exception as e:
+        return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
+
+
+@app.route("/api/pains", methods=["POST"])
+def api_save_pain():
+    try:
+        r = request.get_json()
+        p = save_pain(r.get("text", ""), r.get("source", "manual"), r.get("niche", ""), r.get("url", ""))
+        add_xp(20, "Боль сохранена")
+        return json.dumps(p, ensure_ascii=False), 200, {"Content-Type": "application/json"}
+    except Exception as e:
+        return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
+
+
+@app.route("/api/pains/<pain_id>", methods=["PUT"])
+def api_update_pain(pain_id):
+    try:
+        d = read_json("pains.json", {"pains": []}); r = request.get_json()
+        for i, p in enumerate(d["pains"]):
+            if p["id"] == pain_id:
+                for f in ["status", "niche", "text"]:
+                    if f in r: d["pains"][i][f] = r[f]
+                write_json("pains.json", d)
+                return json.dumps(d["pains"][i], ensure_ascii=False), 200, {"Content-Type": "application/json"}
+        return json.dumps({"error": "Не найден"}), 404, {"Content-Type": "application/json"}
+    except Exception as e:
+        return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
+
+
+@app.route("/api/pains/<pain_id>", methods=["DELETE"])
+def api_delete_pain(pain_id):
+    try:
+        d = read_json("pains.json", {"pains": []})
+        d["pains"] = [p for p in d["pains"] if p["id"] != pain_id]; write_json("pains.json", d)
+        return json.dumps({"ok": True}), 200, {"Content-Type": "application/json"}
+    except Exception as e:
+        return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
+
+
+# === TAGS ===
+
+@app.route("/api/tags", methods=["GET"])
+def api_tags():
+    try:
+        return json.dumps({"tags": DEFAULT_TAGS}, ensure_ascii=False), 200, {"Content-Type": "application/json"}
+    except Exception as e:
+        return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
+
+
+# === ANALYTICS ===
 
 @app.route("/api/analyze-niche", methods=["POST"])
 def api_analyze_niche():
     try:
-        req = request.get_json()
-        niche = req.get("niche", "")
-        prompt = f"""Проанализируй бизнес-нишу:
-
-Ниша: {niche}
-
-Дай оценку:
-📊 Ниша, 🎯 ЦА, 💰 Монетизация, ⚡ Конкуренция, 🕐 MVP, 📈 TAM, ✅ Вердикт
-+ 3 риска, 3 конкурента, стратегия входа, план на 4 недели"""
-
-        answer = call_ai(JARVIS_SYSTEM_PROMPT, prompt, [])
-        track_activity("niche")
-        add_xp(50, f"Анализ ниши: {niche}")
-        return json.dumps({"analysis": answer}, ensure_ascii=False), 200, {"Content-Type": "application/json"}
+        r = request.get_json(); n = r.get("niche", "")
+        a = call_ai(JARVIS_SYSTEM_PROMPT, f"Анализ ниши: {n}\n📊🎯💰⚡🕐📈✅ + 3 риска, 3 конкурента, стратегия, план 4 нед.", [])
+        track_activity("niche"); add_xp(50, f"Ниша: {n}")
+        return json.dumps({"analysis": a}, ensure_ascii=False), 200, {"Content-Type": "application/json"}
     except Exception as e:
         return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
 
 
 @app.route("/api/generate-sprints", methods=["POST"])
-def api_generate_sprints():
+def api_gen_sprints():
     try:
-        req = request.get_json()
-        project = req.get("project", "")
-        weeks = req.get("weeks", 4)
-        prompt = f"""Разбей проект на {weeks} недельных спринтов.
-Проект: {project}
-Для каждого: цель, 4-6 задач, критерий готовности."""
-
-        answer = call_ai(JARVIS_SYSTEM_PROMPT, prompt, [])
-        return json.dumps({"sprints": answer}, ensure_ascii=False), 200, {"Content-Type": "application/json"}
+        r = request.get_json()
+        a = call_ai(JARVIS_SYSTEM_PROMPT, f"Разбей на {r.get('weeks',4)} спринтов:\n{r.get('project','')}\nЦель, 4-6 задач, критерий.", [])
+        return json.dumps({"sprints": a}, ensure_ascii=False), 200, {"Content-Type": "application/json"}
     except Exception as e:
         return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
 
 
 @app.route("/api/score-idea", methods=["POST"])
-def api_score_idea():
+def api_score():
     try:
-        req = request.get_json()
-        idea = req.get("idea", "")
-        prompt = f"""Оцени бизнес-идею по 5 критериям (от 1 до 10):
-
-Идея: {idea}
-
-Ответь СТРОГО в JSON:
-{{"market": 8, "competition": 6, "mvp_speed": 9, "monetization": 7, "scalability": 5, "total": 70, "verdict": "краткий вердикт"}}
-
-market = размер рынка
-competition = мало конкурентов = высокий балл
-mvp_speed = скорость создания MVP
-monetization = потенциал монетизации
-scalability = масштабируемость
-total = среднее * 10"""
-
-        answer = call_ai("Отвечай ТОЛЬКО JSON. Без пояснений.", prompt, [])
+        r = request.get_json()
+        a = call_ai("ТОЛЬКО JSON.", f'Оцени идею 1-10: {r.get("idea","")}\n{{"market":8,"competition":6,"mvp_speed":9,"monetization":7,"scalability":5,"total":70,"verdict":"..."}}', [])
         try:
-            start = answer.find('{')
-            end = answer.rfind('}') + 1
-            if start >= 0 and end > start:
-                score = json.loads(answer[start:end])
-            else:
-                score = {"total": 0, "verdict": answer}
+            s = a.find('{'); e = a.rfind('}')+1
+            sc = json.loads(a[s:e]) if s >= 0 and e > s else {"total": 0, "verdict": a}
         except Exception:
-            score = {"total": 0, "verdict": answer}
-
+            sc = {"total": 0, "verdict": a}
         track_activity("niche")
-        return json.dumps(score, ensure_ascii=False), 200, {"Content-Type": "application/json"}
+        return json.dumps(sc, ensure_ascii=False), 200, {"Content-Type": "application/json"}
     except Exception as e:
         return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
 
-
-# ============================================================
-# FLASK ROUTES — REDDIT
-# ============================================================
 
 @app.route("/api/reddit-search", methods=["POST"])
-def api_reddit_search():
+def api_reddit():
     try:
-        req = request.get_json()
-        query = req.get("query", "")
-
-        url = f"https://www.reddit.com/search.json?q={urllib.parse.quote(query)}&sort=relevance&limit=10"
-        resp = requests.get(url, headers={"User-Agent": "JarvisBot/2.0"}, timeout=10)
-
+        r = request.get_json(); q = r.get("query", "")
+        resp = requests.get(f"https://www.reddit.com/search.json?q={urllib.parse.quote(q)}&sort=relevance&limit=10",
+                            headers={"User-Agent": "JarvisBot/2.0"}, timeout=10)
         if resp.status_code != 200:
-            return json.dumps({"error": "Reddit недоступен"}), 500, {"Content-Type": "application/json"}
-
+            return json.dumps({"error": "Reddit down"}), 500, {"Content-Type": "application/json"}
         posts = []
-        for post in resp.json().get("data", {}).get("children", []):
-            d = post.get("data", {})
-            posts.append({
-                "title": d.get("title", ""),
-                "subreddit": d.get("subreddit", ""),
-                "score": d.get("score", 0),
-                "comments": d.get("num_comments", 0),
-                "url": f"https://reddit.com{d.get('permalink', '')}",
-                "text": (d.get("selftext", ""))[:300]
-            })
-
-        pain_prompt = f"""Проанализируй эти посты с Reddit и выдели:
-1. Топ-5 болей/проблем людей
-2. Что люди готовы покупать
-3. 3 идеи для бизнеса на основе этих болей
-
-Посты:
-{json.dumps(posts[:5], ensure_ascii=False)[:3000]}"""
-
-        analysis = call_ai(JARVIS_SYSTEM_PROMPT, pain_prompt, [])
-        track_activity("niche")
-        add_xp(30, f"Reddit: {query}")
-
-        return json.dumps({"posts": posts, "analysis": analysis}, ensure_ascii=False), 200, {
-            "Content-Type": "application/json"}
+        for p in resp.json().get("data", {}).get("children", []):
+            d = p.get("data", {})
+            posts.append({"title": d.get("title",""), "subreddit": d.get("subreddit",""),
+                          "score": d.get("score",0), "comments": d.get("num_comments",0),
+                          "url": f"https://reddit.com{d.get('permalink','')}", "text": d.get("selftext","")[:300]})
+        analysis = call_ai(JARVIS_SYSTEM_PROMPT, f"Reddit боли:\n{json.dumps(posts[:5], ensure_ascii=False)[:3000]}\n\n1.Топ-5 болей 2.Что покупают 3.3 идеи", [])
+        track_activity("niche"); add_xp(30, f"Reddit: {q}")
+        return json.dumps({"posts": posts, "analysis": analysis}, ensure_ascii=False), 200, {"Content-Type": "application/json"}
     except Exception as e:
         return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
 
 
-# ============================================================
-# FLASK ROUTES — TRENDS
-# ============================================================
+@app.route("/api/youtube-analyze", methods=["POST"])
+def api_youtube():
+    try:
+        r = request.get_json(); url = r.get("url", "")
+        content = parse_youtube_comments(url)
+        a = call_ai(JARVIS_SYSTEM_PROMPT, f"YouTube видео:\n{content}\n\nВыдели: 1.Боли 2.Запросы 3.Идеи для бизнеса", [])
+        track_activity("niche"); add_xp(30, "YouTube")
+        return json.dumps({"content": content, "analysis": a}, ensure_ascii=False), 200, {"Content-Type": "application/json"}
+    except Exception as e:
+        return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
+
 
 @app.route("/api/trends", methods=["POST"])
-def api_get_trends():
+def api_trends():
     try:
-        req = request.get_json()
-        query = req.get("query", "")
-
-        search_results = search_web(f"{query} trends 2024 2025 growth market size")
-
-        prompt = f"""Проанализируй тренды для: {query}
-
-Данные из поиска:
-{search_results[:2000]}
-
-Дай анализ:
-📈 Тренд: растёт / падает / стабильный
-📊 Популярность: 1-10
-🌍 География: где популярно
-💰 Монетизация: как заработать
-🔮 Прогноз: что будет через 1-2 года
-⚡ Рекомендация: стоит ли заходить"""
-
-        analysis = call_ai(JARVIS_SYSTEM_PROMPT, prompt, [])
-        track_activity("niche")
-        add_xp(30, f"Тренды: {query}")
-
-        return json.dumps({"query": query, "analysis": analysis}, ensure_ascii=False), 200, {
-            "Content-Type": "application/json"}
+        r = request.get_json(); q = r.get("query", "")
+        sr = search_web(f"{q} trends 2024 2025 growth market size")
+        a = call_ai(JARVIS_SYSTEM_PROMPT, f"Тренды: {q}\nДанные:\n{sr[:2000]}\n📈📊🌍💰🔮⚡", [])
+        track_activity("niche"); add_xp(30, f"Тренды: {q}")
+        return json.dumps({"query": q, "analysis": a}, ensure_ascii=False), 200, {"Content-Type": "application/json"}
     except Exception as e:
         return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
 
 
-# ============================================================
-# FLASK ROUTES — HISTORY
-# ============================================================
+# === HISTORY ===
 
 @app.route("/api/history", methods=["GET"])
-def api_get_history():
+def api_history():
     try:
-        history = read_json("history.json", {"entries": []})
-        return json.dumps(history, ensure_ascii=False), 200, {"Content-Type": "application/json"}
+        return json.dumps(read_json("history.json", {"entries": []}), ensure_ascii=False), 200, {"Content-Type": "application/json"}
     except Exception as e:
         return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
 
 
-# ============================================================
-# FLASK ROUTES — EXPORT / IMPORT
-# ============================================================
+# === EXPORT/IMPORT ===
 
 @app.route("/api/export", methods=["GET"])
 def api_export():
     try:
-        export = {
-            "exported_at": datetime.now().isoformat(),
-            "version": "2.0",
-            "player": get_player(),
-            "projects": read_json("projects.json", {"projects": []}),
-            "quests": read_json("quests.json", {"quests": []}),
-            "activity": read_json("activity.json", {}),
-            "mission": read_json("mission.json", {}),
-            "history": read_json("history.json", {"entries": []}),
-        }
-        return json.dumps(export, ensure_ascii=False, indent=2), 200, {
-            "Content-Type": "application/json",
-            "Content-Disposition": "attachment; filename=jarvis_backup.json"
-        }
+        exp = {"exported_at": datetime.now().isoformat(), "version": "2.1",
+               "player": get_player(), "projects": read_json("projects.json", {"projects": []}),
+               "quests": read_json("quests.json", {"quests": []}), "sprints": read_json("sprints.json", {"sprints": []}),
+               "activity": read_json("activity.json", {}), "mission": read_json("mission.json", {}),
+               "history": read_json("history.json", {"entries": []}), "pains": read_json("pains.json", {"pains": []}),
+               "daily": read_json("daily.json", {})}
+        return json.dumps(exp, ensure_ascii=False, indent=2), 200, {
+            "Content-Type": "application/json", "Content-Disposition": "attachment; filename=jarvis_backup.json"}
     except Exception as e:
         return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
 
@@ -2083,71 +1900,62 @@ def api_export():
 @app.route("/api/import", methods=["POST"])
 def api_import():
     try:
-        data = request.get_json()
-        if not data:
-            return json.dumps({"error": "Пустые данные"}), 400, {"Content-Type": "application/json"}
-
+        d = request.get_json()
+        if not d:
+            return json.dumps({"error": "empty"}), 400, {"Content-Type": "application/json"}
+        files = {"player": "player.json", "projects": "projects.json", "quests": "quests.json",
+                 "sprints": "sprints.json", "activity": "activity.json", "mission": "mission.json",
+                 "history": "history.json", "pains": "pains.json", "daily": "daily.json"}
         imported = []
-        if "player" in data:
-            write_json("player.json", data["player"])
-            imported.append("player")
-        if "projects" in data:
-            write_json("projects.json", data["projects"])
-            imported.append("projects")
-        if "quests" in data:
-            write_json("quests.json", data["quests"])
-            imported.append("quests")
-        if "activity" in data:
-            write_json("activity.json", data["activity"])
-            imported.append("activity")
-        if "mission" in data:
-            write_json("mission.json", data["mission"])
-            imported.append("mission")
-        if "history" in data:
-            write_json("history.json", data["history"])
-            imported.append("history")
-
+        for k, f in files.items():
+            if k in d: write_json(f, d[k]); imported.append(k)
         return json.dumps({"ok": True, "imported": imported}), 200, {"Content-Type": "application/json"}
     except Exception as e:
         return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
 
 
-# ============================================================
-# FLASK ROUTES — STATS
-# ============================================================
+# === STATS ===
 
 @app.route("/api/stats", methods=["GET"])
-def api_get_stats():
+def api_stats():
     try:
         projects = read_json("projects.json", {"projects": []})
         quests = read_json("quests.json", {"quests": []})
+        sprints = read_json("sprints.json", {"sprints": []})
         player = get_player()
         activity = read_json("activity.json", {"total_messages": 0, "niches_analyzed": 0})
-
-        project_list = projects.get("projects", [])
-        active = [p for p in project_list if p.get("status") == "active"]
-        archived = [p for p in project_list if p.get("status") == "archived"]
-        total_rev = sum(p.get("revenue", 0) for p in project_list)
-
-        quest_list = quests.get("quests", [])
-
-        funnel_summary = {}
-        for stage in FUNNEL_STAGES:
-            count = len([p for p in active if p.get("stage", "idea") == stage])
-            funnel_summary[stage] = {"name": FUNNEL_NAMES[stage], "count": count}
-
+        pains = read_json("pains.json", {"pains": []})
+        pl = projects.get("projects", []); ql = quests.get("quests", []); sl = sprints.get("sprints", [])
+        active = [p for p in pl if p.get("status") == "active"]
+        funnel = {}
+        for s in FUNNEL_STAGES:
+            funnel[s] = {"name": FUNNEL_NAMES[s], "count": len([p for p in active if p.get("stage","idea")==s])}
+        # Stuck projects
+        stuck = []
+        for p in active:
+            h = p.get("stage_history", [])
+            if h:
+                try:
+                    ld = date.fromisoformat(h[-1].get("date","")[:10])
+                    days = (date.today() - ld).days
+                    dl = STAGE_DEADLINE_DAYS.get(p.get("stage","idea"), 7)
+                    if dl > 0 and days > dl:
+                        stuck.append({"id": p["id"], "name": p["name"], "stage": p.get("stage"), "days": days, "deadline": dl})
+                except Exception:
+                    pass
         return json.dumps({
-            "active_projects": len(active),
-            "total_projects": len(project_list),
-            "archived_projects": len(archived),
-            "total_revenue": total_rev,
-            "active_quests": len([q for q in quest_list if not q.get("completed")]),
-            "completed_quests": len([q for q in quest_list if q.get("completed")]),
-            "total_quests": len(quest_list),
+            "active_projects": len(active), "total_projects": len(pl),
+            "archived_projects": len([p for p in pl if p.get("status")=="archived"]),
+            "total_revenue": sum(p.get("revenue",0) for p in pl),
+            "active_quests": len([q for q in ql if not q.get("completed")]),
+            "completed_quests": len([q for q in ql if q.get("completed")]),
+            "total_quests": len(ql),
+            "active_sprints": len([s for s in sl if not s.get("completed")]),
+            "completed_sprints": len([s for s in sl if s.get("completed")]),
             "total_messages": activity.get("total_messages", 0),
             "niches_analyzed": activity.get("niches_analyzed", 0),
-            "player": player,
-            "funnel": funnel_summary,
+            "saved_pains": len(pains.get("pains", [])),
+            "player": player, "funnel": funnel, "stuck_projects": stuck,
             "achievements_unlocked": len(player.get("unlocked", [])),
             "achievements_total": len(ACHIEVEMENTS)
         }, ensure_ascii=False), 200, {"Content-Type": "application/json"}
@@ -2156,27 +1964,18 @@ def api_get_stats():
 
 
 @app.route("/api/modes", methods=["GET"])
-def api_get_modes():
+def api_modes():
     try:
         return json.dumps(MODES, ensure_ascii=False), 200, {"Content-Type": "application/json"}
     except Exception as e:
         return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
 
 
-# ============================================================
-# HEALTH CHECK
-# ============================================================
-
 @app.route("/health", methods=["GET"])
-def health_check():
+def health():
     try:
-        return json.dumps({
-            "status": "ok",
-            "version": "2.0",
-            "time": datetime.now().isoformat(),
-            "data_dir": str(DATA_DIR),
-            "files": [f.name for f in DATA_DIR.iterdir()] if DATA_DIR.exists() else []
-        }), 200, {"Content-Type": "application/json"}
+        return json.dumps({"status": "ok", "version": "2.1", "time": datetime.now().isoformat(),
+                           "files": [f.name for f in DATA_DIR.iterdir()] if DATA_DIR.exists() else []}), 200, {"Content-Type": "application/json"}
     except Exception as e:
         return json.dumps({"status": "error", "error": str(e)}), 500, {"Content-Type": "application/json"}
 
@@ -2188,10 +1987,9 @@ def health_check():
 def setup_webhook():
     if RENDER_URL and TELEGRAM_BOT_TOKEN:
         try:
-            resp = requests.post(
-                "https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/setWebhook",
-                json={"url": RENDER_URL + "/webhook"}, timeout=10)
-            print("Webhook:", resp.json())
+            r = requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/setWebhook",
+                              json={"url": RENDER_URL + "/webhook"}, timeout=10)
+            print("Webhook:", r.json())
         except Exception as e:
             print("Webhook error:", e)
 
@@ -2200,10 +1998,8 @@ def keep_alive():
     while True:
         time.sleep(600)
         if RENDER_URL:
-            try:
-                requests.get(RENDER_URL, timeout=10)
-            except Exception:
-                pass
+            try: requests.get(RENDER_URL, timeout=10)
+            except Exception: pass
 
 
 if __name__ == "__main__":
@@ -2211,8 +2007,8 @@ if __name__ == "__main__":
     threading.Thread(target=keep_alive, daemon=True).start()
     port = int(os.environ.get("PORT", 10000))
     print(f"\n{'='*50}")
-    print(f"🤖 JARVIS 2.0 — http://localhost:{port}")
-    print(f"📊 Web UI — http://localhost:{port}/chat")
+    print(f"🤖 JARVIS 2.1 — http://localhost:{port}")
+    print(f"📊 Web — http://localhost:{port}/chat")
     print(f"📡 API — http://localhost:{port}/api/stats")
     print(f"💾 Export — http://localhost:{port}/api/export")
     print(f"❤️ Health — http://localhost:{port}/health")
