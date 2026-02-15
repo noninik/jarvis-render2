@@ -8,7 +8,7 @@ import subprocess
 import asyncio
 import urllib.parse
 import uuid
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from pathlib import Path
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -23,7 +23,11 @@ user_data = {}
 DATA_DIR = Path("data")
 DATA_DIR.mkdir(exist_ok=True)
 
-# === РЕЖИМЫ ===
+
+# ============================================================
+# РЕЖИМЫ AI
+# ============================================================
+
 MODES = {
     "helper": {"name": "💬 Помощник", "prompt": "Ты универсальный AI-помощник Jarvis. Отвечай кратко и по делу на русском.", "emoji": "💬"},
     "business": {"name": "📊 Бизнес-аналитик", "prompt": "Ты бизнес-аналитик Jarvis. Анализируй рынки, конкурентов, тренды. На русском.", "emoji": "📊"},
@@ -51,6 +55,11 @@ JARVIS_SYSTEM_PROMPT = """Ты — JARVIS 2.0, продвинутый коман
 📈 TAM: [оценка]
 ✅ Вердикт: [стоит/нет + почему]"""
 
+
+# ============================================================
+# ШАБЛОНЫ
+# ============================================================
+
 TEMPLATES = {
     "biz_plan": {"name": "📋 Бизнес-план", "prompt": "Создай детальный бизнес-план. Спроси нишу и бюджет, потом создай план: идея, ЦА, конкуренты, MVP, монетизация, маркетинг, финансы, риски."},
     "content_plan": {"name": "📅 Контент-план", "prompt": "Создай контент-план на 2 недели. Спроси нишу, дай план: дата, тема, формат, хештеги."},
@@ -76,24 +85,56 @@ TEMPLATE_BUTTONS = {
     "📧 Email-цепочка": "email_chain", "📊 SWOT-анализ": "swot",
 }
 
-# === ДОСТИЖЕНИЯ ===
+
+# ============================================================
+# ВОРОНКА ГИПОТЕЗ
+# ============================================================
+
+FUNNEL_STAGES = ["idea", "validation", "mvp", "launch", "growth"]
+FUNNEL_NAMES = {
+    "idea": "💡 Идея",
+    "validation": "🔍 Валидация",
+    "mvp": "🛠 MVP",
+    "launch": "🚀 Запуск",
+    "growth": "📈 Рост"
+}
+FUNNEL_XP = {
+    "idea": 0,
+    "validation": 200,
+    "mvp": 400,
+    "launch": 600,
+    "growth": 1000
+}
+
+
+# ============================================================
+# ДОСТИЖЕНИЯ
+# ============================================================
+
 ACHIEVEMENTS = {
     "first_chat": {"name": "Первый чат", "icon": "💬", "desc": "Отправь первое сообщение", "check": lambda p, s: s.get("total_messages", 0) >= 1},
     "first_project": {"name": "Первый проект", "icon": "🚀", "desc": "Создай первый проект", "check": lambda p, s: s.get("total_projects", 0) >= 1},
     "five_projects": {"name": "5 проектов", "icon": "📦", "desc": "Создай 5 проектов", "check": lambda p, s: s.get("total_projects", 0) >= 5},
     "ten_projects": {"name": "10 проектов", "icon": "🏭", "desc": "Создай 10 проектов", "check": lambda p, s: s.get("total_projects", 0) >= 10},
     "first_quest": {"name": "Первый квест", "icon": "⚔️", "desc": "Заверши первый квест", "check": lambda p, s: s.get("completed_quests", 0) >= 1},
+    "ten_quests": {"name": "10 квестов", "icon": "🗡️", "desc": "Заверши 10 квестов", "check": lambda p, s: s.get("completed_quests", 0) >= 10},
     "xp_100": {"name": "100 XP", "icon": "⚡", "desc": "Набери 100 XP", "check": lambda p, s: p.get("total_xp", 0) >= 100},
     "xp_1000": {"name": "1000 XP", "icon": "🔥", "desc": "Набери 1000 XP", "check": lambda p, s: p.get("total_xp", 0) >= 1000},
     "xp_5000": {"name": "5000 XP", "icon": "💎", "desc": "Набери 5000 XP", "check": lambda p, s: p.get("total_xp", 0) >= 5000},
+    "xp_10000": {"name": "10000 XP", "icon": "👑", "desc": "Набери 10000 XP", "check": lambda p, s: p.get("total_xp", 0) >= 10000},
     "streak_3": {"name": "3 дня подряд", "icon": "🔥", "desc": "Будь активен 3 дня подряд", "check": lambda p, s: p.get("streak", 0) >= 3},
     "streak_7": {"name": "Неделя огня", "icon": "🔥🔥", "desc": "7 дней подряд", "check": lambda p, s: p.get("streak", 0) >= 7},
-    "streak_30": {"name": "Месяц огня", "icon": "👑", "desc": "30 дней подряд", "check": lambda p, s: p.get("streak", 0) >= 30},
+    "streak_30": {"name": "Месяц огня", "icon": "🔥🔥🔥", "desc": "30 дней подряд", "check": lambda p, s: p.get("streak", 0) >= 30},
     "first_revenue": {"name": "Первый $", "icon": "💰", "desc": "Заработай первый доллар", "check": lambda p, s: s.get("total_revenue", 0) > 0},
     "revenue_1k": {"name": "$1K MRR", "icon": "💰💰", "desc": "Достигни $1000 дохода", "check": lambda p, s: s.get("total_revenue", 0) >= 1000},
+    "revenue_10k": {"name": "$10K MRR", "icon": "💰💰💰", "desc": "Достигни $10000 дохода", "check": lambda p, s: s.get("total_revenue", 0) >= 10000},
     "niche_analyst": {"name": "Аналитик", "icon": "🔍", "desc": "Проанализируй 5 ниш", "check": lambda p, s: s.get("niches_analyzed", 0) >= 5},
+    "niche_expert": {"name": "Эксперт ниш", "icon": "🔬", "desc": "Проанализируй 20 ниш", "check": lambda p, s: s.get("niches_analyzed", 0) >= 20},
     "level_5": {"name": "Уровень 5", "icon": "⭐", "desc": "Достигни 5 уровня", "check": lambda p, s: p.get("level", 1) >= 5},
     "level_10": {"name": "Уровень 10", "icon": "🌟", "desc": "Достигни 10 уровня", "check": lambda p, s: p.get("level", 1) >= 10},
+    "level_20": {"name": "Уровень 20", "icon": "✨", "desc": "Достигни 20 уровня", "check": lambda p, s: p.get("level", 1) >= 20},
+    "first_mvp": {"name": "Первый MVP", "icon": "🛠", "desc": "Доведи проект до стадии MVP", "check": lambda p, s: s.get("mvp_count", 0) >= 1},
+    "first_launch": {"name": "Первый запуск", "icon": "🚀", "desc": "Запусти проект", "check": lambda p, s: s.get("launch_count", 0) >= 1},
 }
 
 
@@ -131,9 +172,32 @@ def get_player():
         "total_xp": 0,
         "rank": "Новичок",
         "streak": 0,
+        "max_streak": 0,
         "last_active": "",
         "unlocked": []
     })
+
+
+def update_streak(player):
+    """Корректный подсчёт streak"""
+    today = date.today().isoformat()
+    last = player.get("last_active", "")
+
+    if last == today:
+        return  # уже обновляли сегодня
+
+    yesterday = (date.today() - timedelta(days=1)).isoformat()
+
+    if last == yesterday:
+        player["streak"] = player.get("streak", 0) + 1
+    else:
+        player["streak"] = 1
+
+    # Обновляем максимальный streak
+    if player["streak"] > player.get("max_streak", 0):
+        player["max_streak"] = player["streak"]
+
+    player["last_active"] = today
 
 
 def add_xp(amount, reason=""):
@@ -153,26 +217,10 @@ def add_xp(amount, reason=""):
         player["rank"] = ranks[rank_idx]
         leveled = True
 
-    # === STREAK ===
-    today = date.today().isoformat()
-    last = player.get("last_active", "")
-    if last == today:
-        pass  # уже считали
-    elif last == (date.today().replace(day=date.today().day)).isoformat():
-        pass
-    else:
-        try:
-            from datetime import timedelta
-            yesterday = (date.today() - timedelta(days=1)).isoformat()
-            if last == yesterday:
-                player["streak"] = player.get("streak", 0) + 1
-            elif last != today:
-                player["streak"] = 1
-        except:
-            player["streak"] = 1
-    player["last_active"] = today
+    # Streak
+    update_streak(player)
 
-    # === ДОСТИЖЕНИЯ ===
+    # Достижения
     stats = get_global_stats()
     unlocked = player.get("unlocked", [])
     new_achievements = []
@@ -187,6 +235,10 @@ def add_xp(amount, reason=""):
     player["unlocked"] = unlocked
 
     write_json("player.json", player)
+
+    # Сохраняем снимок для графиков
+    save_daily_snapshot()
+
     return player, leveled, new_achievements
 
 
@@ -194,15 +246,20 @@ def get_global_stats():
     """Собирает глобальную статистику для проверки достижений"""
     projects = read_json("projects.json", {"projects": []})
     quests = read_json("quests.json", {"quests": []})
-    player = read_json("player.json", {})
     activity = read_json("activity.json", {"total_messages": 0, "niches_analyzed": 0})
 
+    project_list = projects.get("projects", [])
+    active_projects = [p for p in project_list if p.get("status") != "archived"]
+
     return {
-        "total_projects": len(projects.get("projects", [])),
-        "total_revenue": sum(p.get("revenue", 0) for p in projects.get("projects", [])),
+        "total_projects": len(project_list),
+        "active_projects": len(active_projects),
+        "total_revenue": sum(p.get("revenue", 0) for p in project_list),
         "completed_quests": len([q for q in quests.get("quests", []) if q.get("completed")]),
         "total_messages": activity.get("total_messages", 0),
         "niches_analyzed": activity.get("niches_analyzed", 0),
+        "mvp_count": len([p for p in project_list if p.get("stage") in ["mvp", "launch", "growth"]]),
+        "launch_count": len([p for p in project_list if p.get("stage") in ["launch", "growth"]]),
     }
 
 
@@ -216,6 +273,35 @@ def track_activity(action):
     write_json("activity.json", activity)
 
 
+def save_daily_snapshot():
+    """Сохраняет ежедневный снимок для графиков"""
+    history = read_json("history.json", {"entries": []})
+    stats = get_global_stats()
+    player = read_json("player.json", {})
+
+    today = date.today().isoformat()
+    entry = {
+        "date": today,
+        "xp": player.get("total_xp", 0),
+        "level": player.get("level", 1),
+        "revenue": stats.get("total_revenue", 0),
+        "projects": stats.get("total_projects", 0),
+        "quests": stats.get("completed_quests", 0),
+        "streak": player.get("streak", 0),
+        "messages": stats.get("total_messages", 0)
+    }
+
+    # Обновляем или добавляем
+    if history["entries"] and history["entries"][-1].get("date") == today:
+        history["entries"][-1] = entry
+    else:
+        history["entries"].append(entry)
+
+    # Максимум 90 дней
+    history["entries"] = history["entries"][-90:]
+    write_json("history.json", history)
+
+
 # ============================================================
 # WEEKLY MISSION
 # ============================================================
@@ -223,7 +309,6 @@ def track_activity(action):
 def get_weekly_mission():
     mission = read_json("mission.json", {})
     today = date.today()
-    # Если миссии нет или прошла неделя — генерим новую
     if not mission or not mission.get("week_start"):
         mission = generate_weekly_mission()
     else:
@@ -257,7 +342,7 @@ def generate_weekly_mission():
             {"text": "Настрой аналитику", "done": False},
             {"text": "Получи первый отклик", "done": False},
         ]
-    else:
+    elif player.get("level", 1) < 7:
         mission_name = "Масштабируй бизнес"
         tasks = [
             {"text": "Проанализируй 3 новых ниши", "done": False},
@@ -265,20 +350,25 @@ def generate_weekly_mission():
             {"text": "Найди партнёра", "done": False},
             {"text": "Увеличь конверсию на 10%", "done": False},
         ]
+    else:
+        mission_name = "Выйди на новый уровень"
+        tasks = [
+            {"text": "Запусти новый продукт", "done": False},
+            {"text": "Автоматизируй процесс", "done": False},
+            {"text": "Делегируй 3 задачи", "done": False},
+            {"text": "Достигни $1K MRR", "done": False},
+        ]
 
     today = date.today()
+    end = today + timedelta(days=(6 - today.weekday()))
+
     mission = {
         "name": mission_name,
         "tasks": tasks,
         "xp_reward": 500,
         "week_start": today.isoformat(),
-        "week_end": (today.replace(day=today.day) if today.day <= 24 else today).isoformat(),
+        "week_end": end.isoformat(),
     }
-
-    # Считаем конец недели
-    from datetime import timedelta
-    end = today + timedelta(days=(6 - today.weekday()))
-    mission["week_end"] = end.isoformat()
 
     write_json("mission.json", mission)
     return mission
@@ -510,7 +600,6 @@ def auto_generate_quests(project):
     answer = call_ai("Отвечай ТОЛЬКО JSON массивом. Без пояснений.", prompt, [])
 
     try:
-        # Пробуем вытащить JSON
         start = answer.find('[')
         end = answer.rfind(']') + 1
         if start >= 0 and end > start:
@@ -923,7 +1012,7 @@ def handle_message(chat_id, text):
         msg = f"📊 Статистика:\n\n"
         msg += f"⚡ Уровень: {player['level']} ({player['rank']})\n"
         msg += f"✨ XP: {player['xp']}/{player['xp_to_next']}\n"
-        msg += f"🔥 Streak: {player.get('streak', 0)} дней\n"
+        msg += f"🔥 Streak: {player.get('streak', 0)} дней (макс: {player.get('max_streak', 0)})\n"
         msg += f"💬 Сообщений: {stats.get('messages', 0)}\n\n"
         msg += f"🏆 Достижения: {len(player.get('unlocked', []))}/{len(ACHIEVEMENTS)}\n"
         for ach_id in player.get("unlocked", []):
@@ -1120,7 +1209,7 @@ def home():
 
 
 # ============================================================
-# WEB API
+# WEB API — ЧАТ
 # ============================================================
 
 web_sessions = {}
@@ -1188,12 +1277,22 @@ def api_clear():
     return json.dumps({"ok": True}), 200, {"Content-Type": "application/json"}
 
 
-# === ПРОЕКТЫ ===
+# ============================================================
+# WEB API — ПРОЕКТЫ
+# ============================================================
 
 @app.route("/api/projects", methods=["GET"])
 def get_projects():
-    return json.dumps(read_json("projects.json", {"projects": []}), ensure_ascii=False), 200, {
-        "Content-Type": "application/json"}
+    data = read_json("projects.json", {"projects": []})
+    # Фильтр по статусу
+    status = request.args.get("status", "")
+    stage = request.args.get("stage", "")
+    projects = data.get("projects", [])
+    if status:
+        projects = [p for p in projects if p.get("status") == status]
+    if stage:
+        projects = [p for p in projects if p.get("stage") == stage]
+    return json.dumps({"projects": projects}, ensure_ascii=False), 200, {"Content-Type": "application/json"}
 
 
 @app.route("/api/projects", methods=["POST"])
@@ -1206,9 +1305,12 @@ def create_project():
         "description": req.get("description", ""),
         "monetization": req.get("monetization", ""),
         "status": "active",
+        "stage": "idea",
+        "stage_history": [{"to": "idea", "date": datetime.now().isoformat()}],
         "sprint": 1,
         "revenue": 0,
         "links": [],
+        "notes": [],
         "created_at": datetime.now().isoformat()
     }
     data["projects"].append(new_project)
@@ -1221,13 +1323,30 @@ def create_project():
     return json.dumps(new_project, ensure_ascii=False), 200, {"Content-Type": "application/json"}
 
 
+@app.route("/api/projects/<project_id>", methods=["GET"])
+def get_project(project_id):
+    data = read_json("projects.json", {"projects": []})
+    for p in data["projects"]:
+        if p["id"] == project_id:
+            # Подтягиваем квесты проекта
+            quests = read_json("quests.json", {"quests": []})
+            project_quests = [q for q in quests["quests"] if q.get("project_id") == project_id]
+            p["quests"] = project_quests
+            return json.dumps(p, ensure_ascii=False), 200, {"Content-Type": "application/json"}
+    return json.dumps({"error": "Не найден"}), 404, {"Content-Type": "application/json"}
+
+
 @app.route("/api/projects/<project_id>", methods=["PUT"])
 def update_project(project_id):
     data = read_json("projects.json", {"projects": []})
     req = request.get_json()
     for i, p in enumerate(data["projects"]):
         if p["id"] == project_id:
-            data["projects"][i].update(req)
+            # Не перезаписываем критичные поля напрямую
+            safe_fields = ["name", "description", "monetization", "status", "sprint"]
+            for field in safe_fields:
+                if field in req:
+                    data["projects"][i][field] = req[field]
             write_json("projects.json", data)
             return json.dumps(data["projects"][i], ensure_ascii=False), 200, {"Content-Type": "application/json"}
     return json.dumps({"error": "Не найден"}), 404, {"Content-Type": "application/json"}
@@ -1240,9 +1359,80 @@ def delete_project(project_id):
     for i, p in enumerate(data["projects"]):
         if p["id"] == project_id:
             data["projects"][i]["status"] = "archived"
+            data["projects"][i]["archived_at"] = datetime.now().isoformat()
             write_json("projects.json", data)
             return json.dumps({"ok": True, "archived": True}), 200, {"Content-Type": "application/json"}
     return json.dumps({"error": "Не найден"}), 404, {"Content-Type": "application/json"}
+
+
+# === ВОССТАНОВИТЬ ПРОЕКТ ИЗ АРХИВА ===
+
+@app.route("/api/projects/<project_id>/restore", methods=["POST"])
+def restore_project(project_id):
+    data = read_json("projects.json", {"projects": []})
+    for i, p in enumerate(data["projects"]):
+        if p["id"] == project_id:
+            data["projects"][i]["status"] = "active"
+            data["projects"][i].pop("archived_at", None)
+            write_json("projects.json", data)
+            return json.dumps(data["projects"][i], ensure_ascii=False), 200, {"Content-Type": "application/json"}
+    return json.dumps({"error": "Не найден"}), 404, {"Content-Type": "application/json"}
+
+
+# === ВОРОНКА — СМЕНИТЬ СТАДИЮ ===
+
+@app.route("/api/projects/<project_id>/stage", methods=["PUT"])
+def update_project_stage(project_id):
+    data = read_json("projects.json", {"projects": []})
+    req = request.get_json()
+    new_stage = req.get("stage", "idea")
+
+    if new_stage not in FUNNEL_STAGES:
+        return json.dumps({"error": "Invalid stage"}), 400, {"Content-Type": "application/json"}
+
+    for i, p in enumerate(data["projects"]):
+        if p["id"] == project_id:
+            old_stage = p.get("stage", "idea")
+            data["projects"][i]["stage"] = new_stage
+
+            # История переходов
+            history = data["projects"][i].get("stage_history", [])
+            history.append({
+                "from": old_stage,
+                "to": new_stage,
+                "date": datetime.now().isoformat()
+            })
+            data["projects"][i]["stage_history"] = history
+
+            write_json("projects.json", data)
+
+            # XP за продвижение вперёд
+            old_idx = FUNNEL_STAGES.index(old_stage) if old_stage in FUNNEL_STAGES else 0
+            new_idx = FUNNEL_STAGES.index(new_stage)
+            if new_idx > old_idx:
+                xp = FUNNEL_XP.get(new_stage, 0)
+                add_xp(xp, f"Стадия: {FUNNEL_NAMES[new_stage]}")
+
+            return json.dumps(data["projects"][i], ensure_ascii=False), 200, {"Content-Type": "application/json"}
+
+    return json.dumps({"error": "Не найден"}), 404, {"Content-Type": "application/json"}
+
+
+# === ВОРОНКА — ОБЗОР ===
+
+@app.route("/api/funnel", methods=["GET"])
+def get_funnel():
+    """Проекты сгруппированные по стадиям воронки"""
+    data = read_json("projects.json", {"projects": []})
+    funnel = {}
+    for stage in FUNNEL_STAGES:
+        funnel[stage] = {
+            "name": FUNNEL_NAMES[stage],
+            "projects": [p for p in data["projects"]
+                         if p.get("stage", "idea") == stage
+                         and p.get("status") != "archived"]
+        }
+    return json.dumps(funnel, ensure_ascii=False), 200, {"Content-Type": "application/json"}
 
 
 # === ДОБАВИТЬ ДОХОД ===
@@ -1255,6 +1445,16 @@ def add_revenue(project_id):
     for i, p in enumerate(data["projects"]):
         if p["id"] == project_id:
             data["projects"][i]["revenue"] = data["projects"][i].get("revenue", 0) + amount
+
+            # История доходов
+            rev_history = data["projects"][i].get("revenue_history", [])
+            rev_history.append({
+                "amount": amount,
+                "date": datetime.now().isoformat(),
+                "note": req.get("note", "")
+            })
+            data["projects"][i]["revenue_history"] = rev_history
+
             write_json("projects.json", data)
             add_xp(50, f"Доход +${amount}")
             return json.dumps(data["projects"][i], ensure_ascii=False), 200, {"Content-Type": "application/json"}
@@ -1271,6 +1471,7 @@ def add_link(project_id):
         if p["id"] == project_id:
             links = data["projects"][i].get("links", [])
             links.append({
+                "id": str(int(time.time() * 1000)),
                 "url": req.get("url", ""),
                 "title": req.get("title", ""),
                 "added": datetime.now().isoformat()
@@ -1281,12 +1482,51 @@ def add_link(project_id):
     return json.dumps({"error": "Не найден"}), 404, {"Content-Type": "application/json"}
 
 
-# === КВЕСТЫ ===
+# === УДАЛИТЬ ССЫЛКУ ===
+
+@app.route("/api/projects/<project_id>/links/<link_id>", methods=["DELETE"])
+def delete_link(project_id, link_id):
+    data = read_json("projects.json", {"projects": []})
+    for i, p in enumerate(data["projects"]):
+        if p["id"] == project_id:
+            links = data["projects"][i].get("links", [])
+            data["projects"][i]["links"] = [l for l in links if l.get("id") != link_id]
+            write_json("projects.json", data)
+            return json.dumps({"ok": True}), 200, {"Content-Type": "application/json"}
+    return json.dumps({"error": "Не найден"}), 404, {"Content-Type": "application/json"}
+
+
+# === ЗАМЕТКИ В ПРОЕКТЕ ===
+
+@app.route("/api/projects/<project_id>/notes", methods=["POST"])
+def add_project_note(project_id):
+    data = read_json("projects.json", {"projects": []})
+    req = request.get_json()
+    for i, p in enumerate(data["projects"]):
+        if p["id"] == project_id:
+            notes = data["projects"][i].get("notes", [])
+            notes.append({
+                "id": str(int(time.time() * 1000)),
+                "text": req.get("text", ""),
+                "added": datetime.now().isoformat()
+            })
+            data["projects"][i]["notes"] = notes
+            write_json("projects.json", data)
+            return json.dumps(data["projects"][i], ensure_ascii=False), 200, {"Content-Type": "application/json"}
+    return json.dumps({"error": "Не найден"}), 404, {"Content-Type": "application/json"}
+
+
+# ============================================================
+# WEB API — КВЕСТЫ
+# ============================================================
 
 @app.route("/api/quests", methods=["GET"])
 def get_quests():
-    return json.dumps(read_json("quests.json", {"quests": []}), ensure_ascii=False), 200, {
-        "Content-Type": "application/json"}
+    data = read_json("quests.json", {"quests": []})
+    project_id = request.args.get("project_id", "")
+    if project_id:
+        data["quests"] = [q for q in data["quests"] if q.get("project_id") == project_id]
+    return json.dumps(data, ensure_ascii=False), 200, {"Content-Type": "application/json"}
 
 
 @app.route("/api/quests", methods=["POST"])
@@ -1315,15 +1555,57 @@ def update_quest(quest_id):
     req = request.get_json()
     for i, q in enumerate(data["quests"]):
         if q["id"] == quest_id:
+            was_completed = q.get("completed", False)
             data["quests"][i].update(req)
-            if req.get("completed") and not q.get("completed"):
+
+            # XP при первом завершении
+            if req.get("completed") and not was_completed:
                 add_xp(q.get("xp_reward", 100), f"Квест: {q['name']}")
+                data["quests"][i]["completed_at"] = datetime.now().isoformat()
+
             write_json("quests.json", data)
             return json.dumps(data["quests"][i], ensure_ascii=False), 200, {"Content-Type": "application/json"}
     return json.dumps({"error": "Не найден"}), 404, {"Content-Type": "application/json"}
 
 
-# === ИГРОК ===
+@app.route("/api/quests/<quest_id>", methods=["DELETE"])
+def delete_quest(quest_id):
+    data = read_json("quests.json", {"quests": []})
+    data["quests"] = [q for q in data["quests"] if q["id"] != quest_id]
+    write_json("quests.json", data)
+    return json.dumps({"ok": True}), 200, {"Content-Type": "application/json"}
+
+
+# === ОТМЕТИТЬ ПОДЗАДАЧУ ===
+
+@app.route("/api/quests/<quest_id>/toggle-task", methods=["POST"])
+def toggle_quest_task(quest_id):
+    data = read_json("quests.json", {"quests": []})
+    req = request.get_json()
+    task_idx = req.get("index", 0)
+
+    for i, q in enumerate(data["quests"]):
+        if q["id"] == quest_id:
+            tasks = q.get("tasks", [])
+            if 0 <= task_idx < len(tasks):
+                tasks[task_idx]["done"] = not tasks[task_idx]["done"]
+                data["quests"][i]["tasks"] = tasks
+
+                # Автозавершение квеста если все задачи выполнены
+                all_done = all(t.get("done", False) for t in tasks)
+                if all_done and not q.get("completed"):
+                    data["quests"][i]["completed"] = True
+                    data["quests"][i]["completed_at"] = datetime.now().isoformat()
+                    add_xp(q.get("xp_reward", 100), f"Квест: {q['name']}")
+
+                write_json("quests.json", data)
+                return json.dumps(data["quests"][i], ensure_ascii=False), 200, {"Content-Type": "application/json"}
+    return json.dumps({"error": "Не найден"}), 404, {"Content-Type": "application/json"}
+
+
+# ============================================================
+# WEB API — ИГРОК И ГЕЙМИФИКАЦИЯ
+# ============================================================
 
 @app.route("/api/player", methods=["GET"])
 def get_player_route():
@@ -1334,8 +1616,11 @@ def get_player_route():
 def add_xp_route():
     req = request.get_json()
     player, leveled, new_ach = add_xp(req.get("amount", 0), req.get("reason", ""))
-    return json.dumps({"player": player, "leveled": leveled, "new_achievements": [a["name"] for a in new_ach]},
-                      ensure_ascii=False), 200, {"Content-Type": "application/json"}
+    return json.dumps({
+        "player": player,
+        "leveled": leveled,
+        "new_achievements": [{"name": a["name"], "icon": a["icon"]} for a in new_ach]
+    }, ensure_ascii=False), 200, {"Content-Type": "application/json"}
 
 
 # === ДОСТИЖЕНИЯ ===
@@ -1374,11 +1659,14 @@ def toggle_mission_task():
         all_done = all(t["done"] for t in mission["tasks"])
         if all_done:
             add_xp(mission.get("xp_reward", 500), "Миссия недели завершена!")
+            mission["completed"] = True
         write_json("mission.json", mission)
     return json.dumps(mission, ensure_ascii=False), 200, {"Content-Type": "application/json"}
 
 
-# === АНАЛИЗ НИШИ ===
+# ============================================================
+# WEB API — АНАЛИТИКА
+# ============================================================
 
 @app.route("/api/analyze-niche", methods=["POST"])
 def analyze_niche():
@@ -1402,8 +1690,6 @@ def analyze_niche():
         return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
 
 
-# === ГЕНЕРАЦИЯ СПРИНТОВ ===
-
 @app.route("/api/generate-sprints", methods=["POST"])
 def generate_sprints():
     try:
@@ -1419,8 +1705,6 @@ def generate_sprints():
     except Exception as e:
         return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
 
-
-# === СКОРИНГ ИДЕИ ===
 
 @app.route("/api/score-idea", methods=["POST"])
 def score_idea():
@@ -1455,7 +1739,71 @@ total = среднее * 10"""
         return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
 
 
-# === СТАТИСТИКА ===
+# ============================================================
+# WEB API — REDDIT ПОИСК
+# ============================================================
+
+@app.route("/api/reddit-search", methods=["POST"])
+def reddit_search():
+    """Поиск болей на Reddit без API ключа"""
+    try:
+        req = request.get_json()
+        query = req.get("query", "")
+
+        url = f"https://www.reddit.com/search.json?q={urllib.parse.quote(query)}&sort=relevance&limit=10"
+        resp = requests.get(url, headers={"User-Agent": "JarvisBot/2.0"}, timeout=10)
+
+        if resp.status_code != 200:
+            return json.dumps({"error": "Reddit недоступен", "status": resp.status_code}), 500, {
+                "Content-Type": "application/json"}
+
+        posts = []
+        for post in resp.json().get("data", {}).get("children", []):
+            d = post.get("data", {})
+            posts.append({
+                "title": d.get("title", ""),
+                "subreddit": d.get("subreddit", ""),
+                "score": d.get("score", 0),
+                "comments": d.get("num_comments", 0),
+                "url": f"https://reddit.com{d.get('permalink', '')}",
+                "text": (d.get("selftext", ""))[:300]
+            })
+
+        # AI анализ болей
+        pain_prompt = f"""Проанализируй эти посты с Reddit и выдели:
+1. Топ-5 болей/проблем людей
+2. Что люди готовы покупать
+3. 3 идеи для бизнеса на основе этих болей
+
+Посты:
+{json.dumps(posts[:5], ensure_ascii=False)[:3000]}"""
+
+        analysis = call_ai(JARVIS_SYSTEM_PROMPT, pain_prompt, [])
+        track_activity("niche")
+        add_xp(30, f"Reddit: {query}")
+
+        return json.dumps({
+            "posts": posts,
+            "analysis": analysis
+        }, ensure_ascii=False), 200, {"Content-Type": "application/json"}
+    except Exception as e:
+        return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
+
+
+# ============================================================
+# WEB API — ИСТОРИЯ И ГРАФИКИ
+# ============================================================
+
+@app.route("/api/history", methods=["GET"])
+def get_history():
+    """История для графиков"""
+    history = read_json("history.json", {"entries": []})
+    return json.dumps(history, ensure_ascii=False), 200, {"Content-Type": "application/json"}
+
+
+# ============================================================
+# WEB API — СТАТИСТИКА
+# ============================================================
 
 @app.route("/api/stats", methods=["GET"])
 def get_stats_route():
@@ -1464,19 +1812,33 @@ def get_stats_route():
     player = get_player()
     activity = read_json("activity.json", {"total_messages": 0, "niches_analyzed": 0})
 
-    active = [p for p in projects["projects"] if p.get("status") == "active"]
-    total_rev = sum(p.get("revenue", 0) for p in projects["projects"])
+    project_list = projects.get("projects", [])
+    active = [p for p in project_list if p.get("status") == "active"]
+    archived = [p for p in project_list if p.get("status") == "archived"]
+    total_rev = sum(p.get("revenue", 0) for p in project_list)
+
+    quest_list = quests.get("quests", [])
+    active_quests = [q for q in quest_list if not q.get("completed")]
+    completed_quests = [q for q in quest_list if q.get("completed")]
+
+    # Воронка
+    funnel_summary = {}
+    for stage in FUNNEL_STAGES:
+        count = len([p for p in active if p.get("stage", "idea") == stage])
+        funnel_summary[stage] = {"name": FUNNEL_NAMES[stage], "count": count}
 
     return json.dumps({
         "active_projects": len(active),
-        "total_projects": len(projects["projects"]),
-        "archived_projects": len([p for p in projects["projects"] if p.get("status") == "archived"]),
+        "total_projects": len(project_list),
+        "archived_projects": len(archived),
         "total_revenue": total_rev,
-        "active_quests": len([q for q in quests["quests"] if not q.get("completed")]),
-        "completed_quests": len([q for q in quests["quests"] if q.get("completed")]),
+        "active_quests": len(active_quests),
+        "completed_quests": len(completed_quests),
+        "total_quests": len(quest_list),
         "total_messages": activity.get("total_messages", 0),
         "niches_analyzed": activity.get("niches_analyzed", 0),
-        "player": player
+        "player": player,
+        "funnel": funnel_summary
     }, ensure_ascii=False), 200, {"Content-Type": "application/json"}
 
 
@@ -1514,5 +1876,7 @@ if __name__ == "__main__":
     setup_webhook()
     threading.Thread(target=keep_alive, daemon=True).start()
     port = int(os.environ.get("PORT", 10000))
-    print(f"\n🤖 JARVIS 2.0 — http://localhost:{port}\n")
+    print(f"\n🤖 JARVIS 2.0 — http://localhost:{port}")
+    print(f"📊 Web UI — http://localhost:{port}/chat")
+    print(f"📡 API — http://localhost:{port}/api/stats\n")
     app.run(host="0.0.0.0", port=port)
