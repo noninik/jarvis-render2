@@ -94,10 +94,10 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9000;display:flex;align-items:center;justify-content:center}
 .modal{background:var(--bg2);border:1px solid var(--bg3);border-radius:var(--radius);padding:20px;max-width:500px;width:90%;max-height:80vh;overflow-y:auto}
 .modal h2{margin-bottom:12px;font-size:16px}.modal-actions{display:flex;gap:6px;margin-top:12px;justify-content:flex-end}
-.tag{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;background:var(--bg4);color:var(--text2);margin:2px}
+.tag{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;background:var(--bg4);color:var(--text2);margin:2px;cursor:pointer}
 .tag.active{background:var(--accent);color:var(--bg)}
 .pain-item{background:var(--bg3);border-radius:8px;padding:10px;margin-bottom:6px;font-size:12px}
-.pain-item .pain-source{font-size:10px;color:var(--text3)}
+.pain-source{font-size:10px;color:var(--text3)}
 .pain-status{font-size:9px;padding:2px 6px;border-radius:8px}
 .status-new{background:rgba(0,212,255,0.2);color:var(--accent)}
 .status-validated{background:rgba(16,185,129,0.2);color:var(--green)}
@@ -170,240 +170,858 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 const SID=localStorage.getItem('j_sid')||((s='s_'+Math.random().toString(36).slice(2))&&(localStorage.setItem('j_sid',s),s));
 let S={player:{},stats:{},projects:[],quests:[],achievements:[],mission:{},history:[],modes:{},daily:{},dailyPlan:{},pains:[],sprints:[],tags:[],page:'dashboard',proj:null,chat:JSON.parse(localStorage.getItem('j_chat')||'[]'),mode:'helper'};
 
-function toast(t,y='info'){const c=document.getElementById('toasts'),d=document.createElement('div');d.className='toast toast-'+y;d.textContent=t;c.appendChild(d);setTimeout(()=>d.remove(),3500)}
-async function api(u,m='GET',b=null){try{const o={method:m,headers:{'Content-Type':'application/json'}};if(b)o.body=JSON.stringify(b);const r=await fetch(u,o);return await r.json()}catch(e){return null}}
+function toast(t,y='info'){const c=document.getElementById('toasts'),d=document.createElement('div');d.className='toast toast-'+y;d.textContent=t;c.appendChild(d);setTimeout(function(){d.remove()},3500)}
+
+function escHtml(s){if(!s)return '';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
+
+async function api(u,m,b){
+  m=m||'GET';
+  try{
+    var o={method:m,headers:{'Content-Type':'application/json'}};
+    if(b)o.body=JSON.stringify(b);
+    var r=await fetch(u,o);
+    return await r.json();
+  }catch(e){
+    console.error('API error:',u,e);
+    return null;
+  }
+}
 
 async function loadAll(){
-const[st,pr,qu,ac,mi,hi,mo,da,dp,pa,sp,tg]=await Promise.all([
-api('/api/stats'),api('/api/projects'),api('/api/quests'),api('/api/achievements'),
-api('/api/mission'),api('/api/history'),api('/api/modes'),api('/api/daily'),
-api('/api/daily-plan'),api('/api/pains'),api('/api/sprints'),api('/api/tags')]);
-if(st){S.stats=st;if(st.player)S.player=st.player}
-if(pr?.projects)S.projects=pr.projects;if(qu?.quests)S.quests=qu.quests;
-if(ac)S.achievements=ac;if(mi)S.mission=mi;if(hi?.entries)S.history=hi.entries;
-if(mo)S.modes=mo;if(da)S.daily=da;if(dp)S.dailyPlan=dp;
-if(pa?.pains)S.pains=pa.pains;if(sp?.sprints)S.sprints=sp.sprints;
-if(tg?.tags)S.tags=tg.tags;
-updPlayer();updSidebar();render()}
+  var results=await Promise.all([
+    api('/api/stats'),api('/api/projects'),api('/api/quests'),api('/api/achievements'),
+    api('/api/mission'),api('/api/history'),api('/api/modes'),api('/api/daily'),
+    api('/api/daily-plan'),api('/api/pains'),api('/api/sprints'),api('/api/tags')
+  ]);
+  var st=results[0],pr=results[1],qu=results[2],ac=results[3],mi=results[4],hi=results[5];
+  var mo=results[6],da=results[7],dp=results[8],pa=results[9],sp=results[10],tg=results[11];
+  if(st){S.stats=st;if(st.player)S.player=st.player}
+  if(pr&&pr.projects)S.projects=pr.projects;
+  if(qu&&qu.quests)S.quests=qu.quests;
+  if(ac)S.achievements=ac;
+  if(mi)S.mission=mi;
+  if(hi&&hi.entries)S.history=hi.entries;
+  if(mo)S.modes=mo;
+  if(da)S.daily=da;
+  if(dp)S.dailyPlan=dp;
+  if(pa&&pa.pains)S.pains=pa.pains;
+  if(sp&&sp.sprints)S.sprints=sp.sprints;
+  if(tg&&tg.tags)S.tags=tg.tags;
+  updPlayer();updSidebar();render();
+}
 
-function updPlayer(){const p=S.player;if(!p.level)return;const pct=p.xp_to_next>0?(p.xp/p.xp_to_next*100):0;
-document.getElementById('playerCard').innerHTML=`<div class="player-level"><span class="lvl">Lv.${p.level}</span><span class="rank">${p.rank||'Новичок'}</span></div><div class="xp-bar"><div class="xp-bar-fill" style="width:${pct}%"></div></div><div class="xp-text"><span>${p.xp||0} XP</span><span>/ ${p.xp_to_next||1000}</span></div><div class="streak-row">🔥 ${p.streak||0}д ${p.max_streak?'(рек:'+p.max_streak+')':''}</div>`}
+function updPlayer(){
+  var p=S.player;if(!p.level)return;
+  var pct=p.xp_to_next>0?(p.xp/p.xp_to_next*100):0;
+  document.getElementById('playerCard').innerHTML=
+    '<div class="player-level"><span class="lvl">Lv.'+p.level+'</span><span class="rank">'+(p.rank||'Новичок')+'</span></div>'+
+    '<div class="xp-bar"><div class="xp-bar-fill" style="width:'+pct+'%"></div></div>'+
+    '<div class="xp-text"><span>'+(p.xp||0)+' XP</span><span>/ '+(p.xp_to_next||1000)+'</span></div>'+
+    '<div class="streak-row">🔥 '+(p.streak||0)+'д'+(p.max_streak?' (рек:'+p.max_streak+')':'')+'</div>';
+}
 
-function updSidebar(){const c=document.getElementById('sidebarProjects');
-const a=S.projects.filter(p=>p.status!=='archived');
-c.innerHTML=a.map(p=>`<div class="project-item" onclick="openProj('${p.id}')"><span class="dot dot-${p.stage||'idea'}"></span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.name}</span>${p.revenue>0?`<span style="color:var(--green);font-size:10px">$${p.revenue}</span>`:''}</div>`).join('')||'<div style="padding:10px;color:var(--text3);font-size:11px">Нет проектов</div>'}
+function updSidebar(){
+  var c=document.getElementById('sidebarProjects');
+  var a=S.projects.filter(function(p){return p.status!=='archived'});
+  var html='';
+  for(var i=0;i<a.length;i++){
+    var p=a[i];
+    html+='<div class="project-item" onclick="openProj(\''+p.id+'\')">'+
+      '<span class="dot dot-'+(p.stage||'idea')+'"></span>'+
+      '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(p.name)+'</span>'+
+      (p.revenue>0?'<span style="color:var(--green);font-size:10px">$'+p.revenue+'</span>':'')+
+      '</div>';
+  }
+  c.innerHTML=html||'<div style="padding:10px;color:var(--text3);font-size:11px">Нет проектов</div>';
+}
 
-function go(p){S.page=p;S.proj=null;document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
-const t={dashboard:'📊 Dashboard',today:'📅 Сегодня',chat:'💬 AI Чат',projects:'🚀 Проекты',quests:'⚔️ Квесты',sprints:'🏃 Спринты',research:'🔍 Исследования',pains:'🎯 База болей',funnel:'📈 Воронка',achievements:'🏆 Достижения',settings:'⚙️ Настройки'};
-document.getElementById('pageTitle').textContent=t[p]||p;document.getElementById('sidebar').classList.remove('open');render()}
+function go(p){
+  S.page=p;S.proj=null;
+  var btns=document.querySelectorAll('.nav-btn');
+  for(var i=0;i<btns.length;i++)btns[i].classList.remove('active');
+  var titles={dashboard:'📊 Dashboard',today:'📅 Сегодня',chat:'💬 AI Чат',projects:'🚀 Проекты',quests:'⚔️ Квесты',sprints:'🏃 Спринты',research:'🔍 Исследования',pains:'🎯 База болей',funnel:'📈 Воронка',achievements:'🏆 Достижения',settings:'⚙️ Настройки'};
+  document.getElementById('pageTitle').textContent=titles[p]||p;
+  document.getElementById('sidebar').classList.remove('open');
+  render();
+}
 
-function render(){const c=document.getElementById('content');const fn={dashboard:rDash,today:rToday,chat:rChat,projects:rProjects,quests:rQuests,sprints:rSprints,research:rResearch,pains:rPains,funnel:rFunnel,achievements:rAch,settings:rSettings,projDetail:rProjDetail};
-c.innerHTML=(fn[S.page]||rDash)();afterRender()}
+function render(){
+  var c=document.getElementById('content');
+  var pages={dashboard:rDash,today:rToday,chat:rChat,projects:rProjects,quests:rQuests,sprints:rSprints,research:rResearch,pains:rPains,funnel:rFunnel,achievements:rAch,settings:rSettings,projDetail:rProjDetail};
+  var fn=pages[S.page]||rDash;
+  c.innerHTML=fn();
+  afterRender();
+}
 
-function afterRender(){if(S.page==='chat'){const m=document.getElementById('chatMsgs');if(m)m.scrollTop=m.scrollHeight;document.getElementById('chatIn')?.focus()}
-if(S.page==='dashboard')initCharts()}
+function afterRender(){
+  if(S.page==='chat'){
+    var m=document.getElementById('chatMsgs');
+    if(m)m.scrollTop=m.scrollHeight;
+    var inp=document.getElementById('chatIn');
+    if(inp)inp.focus();
+  }
+  if(S.page==='dashboard')initCharts();
+}
 
-// === DASHBOARD ===
-function rDash(){const s=S.stats,p=S.player,m=S.mission,f=s.funnel||{},stuck=s.stuck_projects||[];
-return `${stuck.length?stuck.map(x=>`<div class="stuck-alert"><div class="stuck-title">⚠️ ${x.name} застрял!</div><div class="stuck-text">${x.days} дней на стадии ${x.stage} (лимит ${x.deadline}д) <button class="btn btn-sm btn-primary" onclick="openProj('${x.id}')" style="margin-left:8px">Открыть</button></div></div>`).join(''):''}
-<div class="stats-grid">
-<div class="stat-card"><div class="num">${s.active_projects||0}</div><div class="label">Проекты</div></div>
-<div class="stat-card"><div class="num">$${s.total_revenue||0}</div><div class="label">Доход</div></div>
-<div class="stat-card"><div class="num">${s.completed_quests||0}</div><div class="label">Квесты</div></div>
-<div class="stat-card"><div class="num">${p.total_xp||0}</div><div class="label">XP</div></div>
-<div class="stat-card"><div class="num">${s.total_messages||0}</div><div class="label">Сообщения</div></div>
-<div class="stat-card"><div class="num">${s.saved_pains||0}</div><div class="label">Боли</div></div>
-</div>
-${m.name&&!m.completed?`<div class="card mission-card"><h2>🎯 ${m.name}</h2>${(m.tasks||[]).map((t,i)=>`<div class="quest-task ${t.done?'done':''}" onclick="togMission(${i})"><input type="checkbox" ${t.done?'checked':''} onclick="event.stopPropagation();togMission(${i})"><span>${t.text}</span></div>`).join('')}<div style="font-size:11px;color:var(--accent);margin-top:6px">⏰ До ${m.week_end||'...'} | +${m.xp_reward||500} XP</div></div>`:''}
-<div class="card"><h2>📈 Воронка</h2><div class="funnel">${Object.entries(f).map(([k,v])=>`<div class="funnel-stage" onclick="go('funnel')"><div class="stage-icon">${{idea:'💡',validation:'🔍',mvp:'🛠',launch:'🚀',growth:'📈'}[k]||'📦'}</div><div class="stage-name">${v.name||k}</div><div class="stage-count">${v.count||0}</div></div>${k!=='growth'?'<div class="funnel-arrow">→</div>':''}`).join('')}</div></div>
-<div class="card"><h2>📊 XP</h2><div class="chart-container"><canvas id="chXP"></canvas></div></div>
-<div class="card"><h2>💰 Доход</h2><div class="chart-container"><canvas id="chRev"></canvas></div></div>`}
+/* ======================== DASHBOARD ======================== */
+function rDash(){
+  var s=S.stats,p=S.player,m=S.mission,f=s.funnel||{},stuck=s.stuck_projects||[];
+  var html='';
 
-function initCharts(){const e=S.history||[];if(e.length<1)return;const l=e.map(x=>x.date?.slice(5)||'');
-const xE=document.getElementById('chXP'),rE=document.getElementById('chRev');
-if(xE)new Chart(xE,{type:'line',data:{labels:l,datasets:[{label:'XP',data:e.map(x=>x.xp||0),borderColor:'#00d4ff',backgroundColor:'rgba(0,212,255,0.1)',fill:true,tension:.3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#64748b'}},y:{ticks:{color:'#64748b'}}}}});
-if(rE)new Chart(rE,{type:'bar',data:{labels:l,datasets:[{label:'$',data:e.map(x=>x.revenue||0),backgroundColor:'rgba(16,185,129,0.6)',borderColor:'#10b981',borderWidth:1}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#64748b'}},y:{ticks:{color:'#64748b'}}}}})}
+  for(var i=0;i<stuck.length;i++){
+    var x=stuck[i];
+    html+='<div class="stuck-alert"><div class="stuck-title">⚠️ '+escHtml(x.name)+' застрял!</div>'+
+      '<div class="stuck-text">'+x.days+' дней на стадии '+(x.stage||'?')+' (лимит '+x.deadline+'д) '+
+      '<button class="btn btn-sm btn-primary" onclick="openProj(\''+x.id+'\')" style="margin-left:8px">Открыть</button></div></div>';
+  }
 
-// === TODAY ===
-function rToday(){const dp=S.dailyPlan,d=S.daily;
-return `<div class="card"><h2>📅 Ежедневные челленджи</h2>${(d.challenges||[]).map((c,i)=>`<div class="daily-challenge ${c.done?'done':''}" onclick="compDaily(${i})"><input type="checkbox" ${c.done?'checked':''} onclick="event.stopPropagation();compDaily(${i})"><span>${c.text}</span><span class="dc-xp">+${c.xp} XP</span></div>`).join('')}${d.completed?'<div style="color:var(--green);font-size:12px;margin-top:8px">✅ Все выполнено! +100 XP бонус</div>':''}</div>
-${(dp.sections||[]).map(sec=>`<div class="card"><h2>${sec.title}</h2>${(sec.items||[]).map(it=>`<div style="padding:4px 0;font-size:12px;color:var(--text2)">${it}</div>`).join('')}</div>`).join('')}`}
+  html+='<div class="stats-grid">'+
+    '<div class="stat-card"><div class="num">'+(s.active_projects||0)+'</div><div class="label">Проекты</div></div>'+
+    '<div class="stat-card"><div class="num">$'+(s.total_revenue||0)+'</div><div class="label">Доход</div></div>'+
+    '<div class="stat-card"><div class="num">'+(s.completed_quests||0)+'</div><div class="label">Квесты</div></div>'+
+    '<div class="stat-card"><div class="num">'+(p.total_xp||0)+'</div><div class="label">XP</div></div>'+
+    '<div class="stat-card"><div class="num">'+(s.total_messages||0)+'</div><div class="label">Сообщения</div></div>'+
+    '<div class="stat-card"><div class="num">'+(s.saved_pains||0)+'</div><div class="label">Боли</div></div>'+
+    '</div>';
 
-async function compDaily(i){const r=await api('/api/daily/complete','POST',{index:i});if(r?.xp_earned)toast('+'+r.xp_earned+' XP!','success');await loadAll()}
+  if(m.name&&!m.completed){
+    html+='<div class="card mission-card"><h2>🎯 '+escHtml(m.name)+'</h2>';
+    var tasks=m.tasks||[];
+    for(var i=0;i<tasks.length;i++){
+      var t=tasks[i];
+      html+='<div class="quest-task '+(t.done?'done':'')+'" onclick="togMission('+i+')">'+
+        '<input type="checkbox" '+(t.done?'checked':'')+' onclick="event.stopPropagation();togMission('+i+')">'+
+        '<span>'+escHtml(t.text)+'</span></div>';
+    }
+    html+='<div style="font-size:11px;color:var(--accent);margin-top:6px">⏰ До '+(m.week_end||'...')+' | +'+(m.xp_reward||500)+' XP</div></div>';
+  }
 
-// === CHAT ===
-function rChat(){const mk=Object.keys(S.modes);
-return `<div class="mode-grid" style="margin-bottom:12px">${mk.map(k=>{const m=S.modes[k];return`<div class="mode-btn ${S.mode===k?'active':''}" onclick="setMode('${k}')"><span class="mode-emoji">${m.emoji}</span><span class="mode-name">${m.name}</span></div>`}).join('')}</div>
-<div class="chat-container" style="height:calc(100vh - 250px)"><div class="chat-messages" id="chatMsgs">${S.chat.map(m=>`<div class="msg ${m.role}">${m.text}<div class="time">${m.time||''}</div></div>`).join('')}</div>
-<div class="chat-input-row"><input id="chatIn" placeholder="Сообщение..." onkeydown="if(event.key==='Enter')sendChat()"><button class="btn btn-primary" onclick="sendChat()">➤</button><button class="btn btn-secondary btn-icon" onclick="clrChat()">🗑</button></div></div>`}
+  html+='<div class="card"><h2>📈 Воронка</h2><div class="funnel">';
+  var fkeys=['idea','validation','mvp','launch','growth'];
+  var ficons={idea:'💡',validation:'🔍',mvp:'🛠',launch:'🚀',growth:'📈'};
+  for(var i=0;i<fkeys.length;i++){
+    var k=fkeys[i],v=f[k]||{name:k,count:0};
+    html+='<div class="funnel-stage" onclick="go(\'funnel\')">'+
+      '<div class="stage-icon">'+(ficons[k]||'📦')+'</div>'+
+      '<div class="stage-name">'+(v.name||k)+'</div>'+
+      '<div class="stage-count">'+(v.count||0)+'</div></div>';
+    if(i<fkeys.length-1)html+='<div class="funnel-arrow">→</div>';
+  }
+  html+='</div></div>';
 
-async function setMode(m){S.mode=m;await api('/api/mode','POST',{session_id:SID,mode:m});toast(S.modes[m]?.name||m,'info');render()}
-async function sendChat(){const inp=document.getElementById('chatIn'),t=inp.value.trim();if(!t)return;inp.value='';const tm=new Date().toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'});
-S.chat.push({role:'user',text:t,time:tm});render();const r=await api('/api/send','POST',{session_id:SID,text:t});
-if(r?.answer){S.chat.push({role:'bot',text:r.answer,time:r.time||tm});localStorage.setItem('j_chat',JSON.stringify(S.chat.slice(-50)));
-const st=await api('/api/stats');if(st?.player){const ol=S.player.level||1;S.player=st.player;S.stats=st;updPlayer();if(st.player.level>ol)toast('🎉 Уровень '+st.player.level+'!','levelup')}}render()}
-function clrChat(){S.chat=[];localStorage.removeItem('j_chat');api('/api/clear','POST',{session_id:SID});render()}
+  html+='<div class="card"><h2>📊 XP</h2><div class="chart-container"><canvas id="chXP"></canvas></div></div>';
+  html+='<div class="card"><h2>💰 Доход</h2><div class="chart-container"><canvas id="chRev"></canvas></div></div>';
 
-// === PROJECTS ===
-function rProjects(){const a=S.projects.filter(p=>p.status!=='archived'),ar=S.projects.filter(p=>p.status==='archived');
-return `<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap"><button class="btn btn-primary" onclick="newProj()">➕ Новый</button>${S.tags.map(t=>`<span class="tag" style="cursor:pointer" onclick="filterTag('${t}')">${t}</span>`).join('')}</div>
-${a.map(p=>`<div class="card" style="cursor:pointer" onclick="openProj('${p.id}')"><div style="display:flex;justify-content:space-between;align-items:center"><div><span class="dot dot-${p.stage||'idea'}" style="margin-right:6px"></span><strong>${p.name}</strong><span style="color:var(--text3);font-size:11px;margin-left:6px">${{idea:'💡',validation:'🔍',mvp:'🛠',launch:'🚀',growth:'📈'}[p.stage||'idea']}</span>${p.score?`<span style="margin-left:6px;font-size:10px;color:var(--orange)">${p.score}/100</span>`:''}</div><div style="display:flex;gap:8px;align-items:center">${p.revenue>0?`<span style="color:var(--green);font-weight:700">$${p.revenue}</span>`:''}<button class="btn btn-sm btn-danger" onclick="event.stopPropagation();archProj('${p.id}')">📦</button></div></div>${p.tags?.length?`<div style="margin-top:4px">${p.tags.map(t=>`<span class="tag">${t}</span>`).join('')}</div>`:''}</div>`).join('')||'<div class="card"><p style="color:var(--text3)">Создай первый проект!</p></div>'}
-${ar.length?`<div class="section-title">📦 Архив (${ar.length})</div>${ar.map(p=>`<div class="card" style="opacity:0.5"><div style="display:flex;justify-content:space-between;align-items:center"><strong>${p.name}</strong><button class="btn btn-sm btn-secondary" onclick="restProj('${p.id}')">♻️</button></div></div>`).join('')}`:''}`}
+  return html;
+}
 
-function filterTag(t){/* простая фильтрация */const a=S.projects.filter(p=>p.status!=='archived'&&(p.tags||[]).includes(t));
-if(a.length)toast(t+': '+a.length+' проектов','info');else toast('Нет проектов с тегом '+t,'info')}
+function initCharts(){
+  var e=S.history||[];if(e.length<1)return;
+  var labels=[],xpData=[],revData=[];
+  for(var i=0;i<e.length;i++){
+    labels.push((e[i].date||'').slice(5));
+    xpData.push(e[i].xp||0);
+    revData.push(e[i].revenue||0);
+  }
+  var xE=document.getElementById('chXP');
+  var rE=document.getElementById('chRev');
+  var opts={responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#64748b'}},y:{ticks:{color:'#64748b'}}}};
+  if(xE)new Chart(xE,{type:'line',data:{labels:labels,datasets:[{label:'XP',data:xpData,borderColor:'#00d4ff',backgroundColor:'rgba(0,212,255,0.1)',fill:true,tension:.3}]},options:opts});
+  if(rE)new Chart(rE,{type:'bar',data:{labels:labels,datasets:[{label:'$',data:revData,backgroundColor:'rgba(16,185,129,0.6)',borderColor:'#10b981',borderWidth:1}]},options:opts});
+}
 
-function newProj(){showModal('Новый проект',`<div class="form-group"><label>Название</label><input id="pN" placeholder="Проект"></div><div class="form-group"><label>Описание</label><textarea id="pD" placeholder="Описание"></textarea></div><div class="form-group"><label>Монетизация</label><input id="pM" placeholder="Подписки, реклама..."></div><div class="form-group"><label>Теги</label><div id="tagSel" style="display:flex;flex-wrap:wrap;gap:4px">${S.tags.map(t=>`<span class="tag" style="cursor:pointer" onclick="this.classList.toggle('active')" data-tag="${t}">${t}</span>`).join('')}</div></div>`,async()=>{const tags=[...document.querySelectorAll('#tagSel .tag.active')].map(e=>e.dataset.tag);
-const r=await api('/api/projects','POST',{name:document.getElementById('pN').value,description:document.getElementById('pD').value,monetization:document.getElementById('pM').value,tags});
-if(r?.id){toast('🚀 Создан!','success');closeModal();await loadAll()}})}
+/* ======================== TODAY ======================== */
+function rToday(){
+  var d=S.daily,dp=S.dailyPlan;
+  var html='<div class="card"><h2>📅 Ежедневные челленджи</h2>';
+  var ch=d.challenges||[];
+  for(var i=0;i<ch.length;i++){
+    var c=ch[i];
+    html+='<div class="daily-challenge '+(c.done?'done':'')+'" onclick="compDaily('+i+')">'+
+      '<input type="checkbox" '+(c.done?'checked':'')+' onclick="event.stopPropagation();compDaily('+i+')">'+
+      '<span>'+escHtml(c.text)+'</span><span class="dc-xp">+'+c.xp+' XP</span></div>';
+  }
+  if(d.completed)html+='<div style="color:var(--green);font-size:12px;margin-top:8px">✅ Всё выполнено! +100 XP бонус</div>';
+  html+='</div>';
+
+  var secs=dp.sections||[];
+  for(var i=0;i<secs.length;i++){
+    var sec=secs[i];
+    html+='<div class="card"><h2>'+escHtml(sec.title)+'</h2>';
+    var items=sec.items||[];
+    for(var j=0;j<items.length;j++){
+      html+='<div style="padding:4px 0;font-size:12px;color:var(--text2)">'+escHtml(items[j])+'</div>';
+    }
+    html+='</div>';
+  }
+  return html;
+}
+
+async function compDaily(i){
+  var r=await api('/api/daily/complete','POST',{index:i});
+  if(r&&r.xp_earned)toast('+'+r.xp_earned+' XP!','success');
+  await loadAll();
+}
+
+/* ======================== CHAT ======================== */
+function rChat(){
+  var mk=Object.keys(S.modes);
+  var html='<div class="mode-grid" style="margin-bottom:12px">';
+  for(var i=0;i<mk.length;i++){
+    var k=mk[i],m=S.modes[k];
+    html+='<div class="mode-btn '+(S.mode===k?'active':'')+'" onclick="setMode(\''+k+'\')">'+
+      '<span class="mode-emoji">'+m.emoji+'</span><span class="mode-name">'+escHtml(m.name)+'</span></div>';
+  }
+  html+='</div>';
+
+  html+='<div class="chat-container" style="height:calc(100vh - 250px)"><div class="chat-messages" id="chatMsgs">';
+  for(var i=0;i<S.chat.length;i++){
+    var msg=S.chat[i];
+    html+='<div class="msg '+msg.role+'">'+escHtml(msg.text)+'<div class="time">'+(msg.time||'')+'</div></div>';
+  }
+  html+='</div><div class="chat-input-row">'+
+    '<input id="chatIn" placeholder="Сообщение..." onkeydown="if(event.key===\'Enter\')sendChat()">'+
+    '<button class="btn btn-primary" onclick="sendChat()">➤</button>'+
+    '<button class="btn btn-secondary btn-icon" onclick="clrChat()">🗑</button></div></div>';
+  return html;
+}
+
+async function setMode(m){
+  S.mode=m;
+  await api('/api/mode','POST',{session_id:SID,mode:m});
+  toast((S.modes[m]&&S.modes[m].name)||m,'info');
+  render();
+}
+
+async function sendChat(){
+  var inp=document.getElementById('chatIn');
+  var t=inp.value.trim();
+  if(!t)return;
+  inp.value='';
+  var tm=new Date().toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'});
+  S.chat.push({role:'user',text:t,time:tm});
+  render();
+  var r=await api('/api/send','POST',{session_id:SID,text:t});
+  if(r&&r.answer){
+    S.chat.push({role:'bot',text:r.answer,time:r.time||tm});
+    localStorage.setItem('j_chat',JSON.stringify(S.chat.slice(-50)));
+    var st=await api('/api/stats');
+    if(st&&st.player){
+      var ol=S.player.level||1;
+      S.player=st.player;S.stats=st;updPlayer();
+      if(st.player.level>ol)toast('🎉 Уровень '+st.player.level+'!','levelup');
+    }
+  }
+  render();
+}
+
+function clrChat(){
+  S.chat=[];localStorage.removeItem('j_chat');
+  api('/api/clear','POST',{session_id:SID});
+  render();
+}
+
+/* ======================== PROJECTS ======================== */
+function rProjects(){
+  var a=S.projects.filter(function(p){return p.status!=='archived'});
+  var ar=S.projects.filter(function(p){return p.status==='archived'});
+  var html='<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">'+
+    '<button class="btn btn-primary" onclick="newProj()">➕ Новый</button>';
+  for(var i=0;i<S.tags.length;i++){
+    html+='<span class="tag" onclick="filterTag(\''+S.tags[i]+'\')">'+S.tags[i]+'</span>';
+  }
+  html+='</div>';
+
+  for(var i=0;i<a.length;i++){
+    var p=a[i];
+    var stageIcon={idea:'💡',validation:'🔍',mvp:'🛠',launch:'🚀',growth:'📈'};
+    html+='<div class="card" style="cursor:pointer" onclick="openProj(\''+p.id+'\')">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center"><div>'+
+      '<span class="dot dot-'+(p.stage||'idea')+'" style="margin-right:6px"></span>'+
+      '<strong>'+escHtml(p.name)+'</strong>'+
+      '<span style="color:var(--text3);font-size:11px;margin-left:6px">'+(stageIcon[p.stage||'idea']||'')+'</span>'+
+      (p.score?'<span style="margin-left:6px;font-size:10px;color:var(--orange)">'+p.score+'/100</span>':'')+
+      '</div><div style="display:flex;gap:8px;align-items:center">'+
+      (p.revenue>0?'<span style="color:var(--green);font-weight:700">$'+p.revenue+'</span>':'')+
+      '<button class="btn btn-sm btn-danger" onclick="event.stopPropagation();archProj(\''+p.id+'\')">📦</button>'+
+      '</div></div>';
+    if(p.tags&&p.tags.length){
+      html+='<div style="margin-top:4px">';
+      for(var j=0;j<p.tags.length;j++)html+='<span class="tag">'+p.tags[j]+'</span>';
+      html+='</div>';
+    }
+    html+='</div>';
+  }
+  if(!a.length)html+='<div class="card"><p style="color:var(--text3)">Создай первый проект!</p></div>';
+
+  if(ar.length){
+    html+='<div class="section-title">📦 Архив ('+ar.length+')</div>';
+    for(var i=0;i<ar.length;i++){
+      html+='<div class="card" style="opacity:0.5"><div style="display:flex;justify-content:space-between;align-items:center">'+
+        '<strong>'+escHtml(ar[i].name)+'</strong>'+
+        '<button class="btn btn-sm btn-secondary" onclick="restProj(\''+ar[i].id+'\')">♻️</button></div></div>';
+    }
+  }
+  return html;
+}
+
+function filterTag(t){
+  var a=S.projects.filter(function(p){return p.status!=='archived'&&p.tags&&p.tags.indexOf(t)>=0});
+  toast(t+': '+a.length+' проектов','info');
+}
+
+function newProj(){
+  var tagHtml='';
+  for(var i=0;i<S.tags.length;i++){
+    tagHtml+='<span class="tag" onclick="this.classList.toggle(\'active\')" data-tag="'+S.tags[i]+'">'+S.tags[i]+'</span>';
+  }
+  showModal('Новый проект',
+    '<div class="form-group"><label>Название</label><input id="pN" placeholder="Проект"></div>'+
+    '<div class="form-group"><label>Описание</label><textarea id="pD" placeholder="Описание"></textarea></div>'+
+    '<div class="form-group"><label>Монетизация</label><input id="pM" placeholder="Подписки..."></div>'+
+    '<div class="form-group"><label>Теги</label><div id="tagSel" style="display:flex;flex-wrap:wrap;gap:4px">'+tagHtml+'</div></div>',
+    async function(){
+      var tagEls=document.querySelectorAll('#tagSel .tag.active');
+      var tags=[];for(var i=0;i<tagEls.length;i++)tags.push(tagEls[i].getAttribute('data-tag'));
+      var r=await api('/api/projects','POST',{name:document.getElementById('pN').value,description:document.getElementById('pD').value,monetization:document.getElementById('pM').value,tags:tags});
+      if(r&&r.id){toast('🚀 Создан!','success');closeModal();await loadAll()}
+    });
+}
 
 async function archProj(id){await api('/api/projects/'+id,'DELETE');toast('📦 Архив','info');await loadAll()}
 async function restProj(id){await api('/api/projects/'+id+'/restore','POST');toast('♻️ Восстановлен','success');await loadAll()}
 
-// === PROJECT DETAIL ===
+/* ======================== PROJECT DETAIL ======================== */
 function openProj(id){S.proj=id;S.page='projDetail';render()}
-function rProjDetail(){const p=S.projects.find(x=>x.id===S.proj);if(!p)return'<div class="card">Не найден</div>';
-const q=S.quests.filter(x=>x.project_id===p.id),sp=S.sprints.filter(x=>x.project_id===p.id);
-const stages=['idea','validation','mvp','launch','growth'],sn={idea:'💡 Идея',validation:'🔍 Валидация',mvp:'🛠 MVP',launch:'🚀 Запуск',growth:'📈 Рост'};
-const ci=stages.indexOf(p.stage||'idea');
-return `<button class="btn btn-sm btn-secondary" onclick="go('projects')" style="margin-bottom:12px">← Назад</button>
-<div class="card"><h2>${p.name}${p.stage_overdue?'<span style="color:var(--red);font-size:11px;margin-left:8px">⚠️ Застрял!</span>':''}</h2>
-<p style="color:var(--text2);font-size:12px;margin-bottom:8px">${p.description||''}</p>
-<p style="font-size:11px;color:var(--text3)">💰 ${p.monetization||'—'} | 💵 $${p.revenue||0}${p.days_in_stage!=null?' | 📅 '+p.days_in_stage+'д на стадии':''}</p>
-${p.tags?.length?`<div style="margin-top:6px">${p.tags.map(t=>`<span class="tag">${t}</span>`).join('')}</div>`:''}
-<div style="display:flex;gap:4px;margin-top:12px">${stages.map((s,i)=>`<div class="stage-step ${i===ci?'current':''} ${i<ci?'passed':''}" onclick="chgStage('${p.id}','${s}')">${sn[s]}</div>`).join('')}</div>
-<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:12px">
-<button class="btn btn-sm btn-success" onclick="addRev('${p.id}')">💰 Доход</button>
-<button class="btn btn-sm btn-secondary" onclick="addLink('${p.id}')">🔗 Ссылка</button>
-<button class="btn btn-sm btn-secondary" onclick="addNote('${p.id}')">📝 Заметка</button>
-<button class="btn btn-sm btn-secondary" onclick="genOffer('${p.id}')">✨ Оффер</button>
-<button class="btn btn-sm btn-secondary" onclick="genSprintForProj('${p.id}','${p.name}')">🏃 Спринт</button>
-</div></div>
-${q.length?`<div class="card"><h2>⚔️ Квесты</h2>${q.map(x=>rQuestItem(x)).join('')}</div>`:''}
-${sp.length?`<div class="card"><h2>🏃 Спринты</h2>${sp.map(x=>rSprintItem(x)).join('')}</div>`:''}
-${(p.links||[]).length?`<div class="card"><h2>🔗 Ссылки</h2>${p.links.map(l=>`<div class="link-item"><a href="${l.url}" target="_blank">${l.title||l.url}</a><button class="btn btn-sm btn-danger btn-icon" onclick="delLink('${p.id}','${l.id}')">✕</button></div>`).join('')}</div>`:''}
-${(p.notes||[]).length?`<div class="card"><h2>📝 Заметки</h2>${p.notes.map(n=>`<div class="note-item">${n.text}<div class="note-date">${n.added?.slice(0,10)||''}</div></div>`).join('')}</div>`:''}
-${(p.revenue_history||[]).length?`<div class="card"><h2>💵 Доходы</h2>${p.revenue_history.map(r=>`<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--bg3);font-size:12px"><span style="color:var(--green)">+$${r.amount}</span><span style="color:var(--text3)">${r.note||''} ${r.date?.slice(0,10)||''}</span></div>`).join('')}</div>`:''}`}
 
-async function chgStage(pid,s){const r=await api('/api/projects/'+pid+'/stage','PUT',{stage:s});if(r?.stage){toast('Стадия: '+ s,'success');await loadAll();openProj(pid)}}
-function addRev(pid){showModal('Доход',`<div class="form-group"><label>Сумма $</label><input id="rA" type="number" placeholder="100"></div><div class="form-group"><label>Заметка</label><input id="rN" placeholder="Откуда?"></div>`,async()=>{await api('/api/projects/'+pid+'/revenue','POST',{amount:parseFloat(document.getElementById('rA').value)||0,note:document.getElementById('rN').value});toast('💰!','success');closeModal();await loadAll();openProj(pid)})}
-function addLink(pid){showModal('Ссылка',`<div class="form-group"><label>URL</label><input id="lU" placeholder="https://..."></div><div class="form-group"><label>Название</label><input id="lT" placeholder="Сайт"></div>`,async()=>{await api('/api/projects/'+pid+'/links','POST',{url:document.getElementById('lU').value,title:document.getElementById('lT').value});toast('🔗!','success');closeModal();await loadAll();openProj(pid)})}
-function addNote(pid){showModal('Заметка',`<div class="form-group"><label>Текст</label><textarea id="nT" placeholder="..."></textarea></div>`,async()=>{await api('/api/projects/'+pid+'/notes','POST',{text:document.getElementById('nT').value});toast('📝!','success');closeModal();await loadAll();openProj(pid)})}
+function rProjDetail(){
+  var p=null;
+  for(var i=0;i<S.projects.length;i++){if(S.projects[i].id===S.proj){p=S.projects[i];break}}
+  if(!p)return '<div class="card">Не найден</div>';
+
+  var q=[],sp=[];
+  for(var i=0;i<S.quests.length;i++){if(S.quests[i].project_id===p.id)q.push(S.quests[i])}
+  for(var i=0;i<S.sprints.length;i++){if(S.sprints[i].project_id===p.id)sp.push(S.sprints[i])}
+
+  var stages=['idea','validation','mvp','launch','growth'];
+  var sn={idea:'💡 Идея',validation:'🔍 Валидация',mvp:'🛠 MVP',launch:'🚀 Запуск',growth:'📈 Рост'};
+  var ci=stages.indexOf(p.stage||'idea');
+
+  var html='<button class="btn btn-sm btn-secondary" onclick="go(\'projects\')" style="margin-bottom:12px">← Назад</button>';
+
+  html+='<div class="card"><h2>'+escHtml(p.name)+(p.stage_overdue?'<span style="color:var(--red);font-size:11px;margin-left:8px">⚠️ Застрял!</span>':'')+'</h2>'+
+    '<p style="color:var(--text2);font-size:12px;margin-bottom:8px">'+escHtml(p.description||'')+'</p>'+
+    '<p style="font-size:11px;color:var(--text3)">💰 '+(p.monetization||'—')+' | 💵 $'+(p.revenue||0)+
+    (p.days_in_stage!=null?' | 📅 '+p.days_in_stage+'д':'')+
+    '</p>';
+
+  if(p.tags&&p.tags.length){
+    html+='<div style="margin-top:6px">';
+    for(var i=0;i<p.tags.length;i++)html+='<span class="tag">'+p.tags[i]+'</span>';
+    html+='</div>';
+  }
+
+  html+='<div style="display:flex;gap:4px;margin-top:12px">';
+  for(var i=0;i<stages.length;i++){
+    var cls='stage-step';
+    if(i===ci)cls+=' current';else if(i<ci)cls+=' passed';
+    html+='<div class="'+cls+'" onclick="chgStage(\''+p.id+'\',\''+stages[i]+'\')">'+sn[stages[i]]+'</div>';
+  }
+  html+='</div>';
+
+  html+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:12px">'+
+    '<button class="btn btn-sm btn-success" onclick="addRev(\''+p.id+'\')">💰 Доход</button>'+
+    '<button class="btn btn-sm btn-secondary" onclick="addLink(\''+p.id+'\')">🔗 Ссылка</button>'+
+    '<button class="btn btn-sm btn-secondary" onclick="addNote(\''+p.id+'\')">📝 Заметка</button>'+
+    '<button class="btn btn-sm btn-secondary" onclick="genOffer(\''+p.id+'\')">✨ Оффер</button>'+
+    '<button class="btn btn-sm btn-secondary" onclick="genSprintUI(\''+p.id+'\',\''+escHtml(p.name)+'\')">🏃 Спринт</button>'+
+    '</div></div>';
+
+  if(q.length){
+    html+='<div class="card"><h2>⚔️ Квесты</h2>';
+    for(var i=0;i<q.length;i++)html+=rQuestItem(q[i]);
+    html+='</div>';
+  }
+
+  if(sp.length){
+    html+='<div class="card"><h2>🏃 Спринты</h2>';
+    for(var i=0;i<sp.length;i++)html+=rSprintItem(sp[i]);
+    html+='</div>';
+  }
+
+  if(p.links&&p.links.length){
+    html+='<div class="card"><h2>🔗 Ссылки</h2>';
+    for(var i=0;i<p.links.length;i++){
+      var l=p.links[i];
+      html+='<div class="link-item"><a href="'+escHtml(l.url)+'" target="_blank">'+escHtml(l.title||l.url)+'</a>'+
+        '<button class="btn btn-sm btn-danger btn-icon" onclick="delLink(\''+p.id+'\',\''+l.id+'\')">✕</button></div>';
+    }
+    html+='</div>';
+  }
+
+  if(p.notes&&p.notes.length){
+    html+='<div class="card"><h2>📝 Заметки</h2>';
+    for(var i=0;i<p.notes.length;i++){
+      html+='<div class="note-item">'+escHtml(p.notes[i].text)+
+        '<div class="note-date">'+(p.notes[i].added?p.notes[i].added.slice(0,10):'')+'</div></div>';
+    }
+    html+='</div>';
+  }
+
+  if(p.revenue_history&&p.revenue_history.length){
+    html+='<div class="card"><h2>💵 Доходы</h2>';
+    for(var i=0;i<p.revenue_history.length;i++){
+      var rv=p.revenue_history[i];
+      html+='<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--bg3);font-size:12px">'+
+        '<span style="color:var(--green)">+$'+rv.amount+'</span>'+
+        '<span style="color:var(--text3)">'+escHtml(rv.note||'')+' '+(rv.date?rv.date.slice(0,10):'')+'</span></div>';
+    }
+    html+='</div>';
+  }
+
+  return html;
+}
+
+async function chgStage(pid,s){
+  var r=await api('/api/projects/'+pid+'/stage','PUT',{stage:s});
+  if(r&&r.stage){toast('Стадия: '+s,'success');await loadAll();openProj(pid)}
+}
+
+function addRev(pid){
+  showModal('Доход','<div class="form-group"><label>Сумма $</label><input id="rA" type="number" placeholder="100"></div>'+
+    '<div class="form-group"><label>Заметка</label><input id="rN" placeholder="Откуда?"></div>',
+    async function(){
+      await api('/api/projects/'+pid+'/revenue','POST',{amount:parseFloat(document.getElementById('rA').value)||0,note:document.getElementById('rN').value});
+      toast('💰!','success');closeModal();await loadAll();openProj(pid);
+    });
+}
+
+function addLink(pid){
+  showModal('Ссылка','<div class="form-group"><label>URL</label><input id="lU" placeholder="https://..."></div>'+
+    '<div class="form-group"><label>Название</label><input id="lT" placeholder="Сайт"></div>',
+    async function(){
+      await api('/api/projects/'+pid+'/links','POST',{url:document.getElementById('lU').value,title:document.getElementById('lT').value});
+      toast('🔗!','success');closeModal();await loadAll();openProj(pid);
+    });
+}
+
+function addNote(pid){
+  showModal('Заметка','<div class="form-group"><label>Текст</label><textarea id="nT" placeholder="..."></textarea></div>',
+    async function(){
+      await api('/api/projects/'+pid+'/notes','POST',{text:document.getElementById('nT').value});
+      toast('📝!','success');closeModal();await loadAll();openProj(pid);
+    });
+}
+
 async function delLink(pid,lid){await api('/api/projects/'+pid+'/links/'+lid,'DELETE');await loadAll();openProj(pid)}
-async function genOffer(pid){toast('✨ Генерирую...','info');const r=await api('/api/projects/'+pid+'/offer','POST');if(r?.offer)showModal('✨ Оффер',`<div style="white-space:pre-wrap;font-size:13px;line-height:1.5">${r.offer}</div>`,null)}
-async function genSprintForProj(pid,pname){toast('🏃 Генерирую спринт...','info');const r=await api('/api/generate-sprints','POST',{project:pname,weeks:1});
-if(r?.sprints){showModal('🏃 Спринт',`<div style="white-space:pre-wrap;font-size:13px;line-height:1.5">${r.sprints}</div><div class="form-group" style="margin-top:12px"><label>Задачи (по строке)</label><textarea id="spTasks" placeholder="Задача 1\nЗадача 2\nЗадача 3"></textarea></div>`,async()=>{const tasks=document.getElementById('spTasks').value.split('\n').filter(t=>t.trim());
-if(tasks.length){await api('/api/sprints','POST',{project_id:pid,name:'Спринт',tasks,duration:7});toast('🏃 Создан!','success');closeModal();await loadAll();openProj(pid)}})}}
 
-// === QUESTS ===
-function rQuests(){const a=S.quests.filter(q=>!q.completed),d=S.quests.filter(q=>q.completed);
-return `<button class="btn btn-primary" onclick="newQuest()" style="margin-bottom:12px">➕ Квест</button>
-${a.length?`<div class="section-title">Активные (${a.length})</div>`:''}${a.map(q=>rQuestItem(q)).join('')}
-${!a.length?'<div class="card"><p style="color:var(--text3)">Все выполнены! 🎉</p></div>':''}
-${d.length?`<div class="section-title" style="color:var(--text3)">✅ Выполнено (${d.length})</div>${d.slice(-5).map(q=>rQuestItem(q)).join('')}`:''}`}
+async function genOffer(pid){
+  toast('✨ Генерирую...','info');
+  var r=await api('/api/projects/'+pid+'/offer','POST');
+  if(r&&r.offer)showModal('✨ Оффер','<div style="white-space:pre-wrap;font-size:13px;line-height:1.5">'+escHtml(r.offer)+'</div>',null);
+}
 
-function rQuestItem(q){const pn=S.projects.find(p=>p.id===q.project_id)?.name||'';
-return `<div class="quest-item ${q.completed?'quest-completed':''}"><div class="quest-header"><div><span class="quest-name">${q.name}</span>${pn?`<span style="font-size:10px;color:var(--text3);margin-left:6px">📂 ${pn}</span>`:''}</div><div style="display:flex;gap:6px;align-items:center"><span class="quest-priority priority-${q.priority||'normal'}">${q.priority==='urgent'?'🔴':'🟢'}</span><span class="quest-xp">+${q.xp_reward||100}</span></div></div>
-${(q.tasks||[]).map((t,i)=>`<div class="quest-task ${t.done?'done':''}" onclick="togTask('${q.id}',${i})"><input type="checkbox" ${t.done?'checked':''} onclick="event.stopPropagation();togTask('${q.id}',${i})"><span>${t.text}</span></div>`).join('')}</div>`}
+async function genSprintUI(pid,pname){
+  toast('🏃 Генерирую...','info');
+  var r=await api('/api/generate-sprints','POST',{project:pname,weeks:1});
+  if(r&&r.sprints){
+    showModal('🏃 Спринт','<div style="white-space:pre-wrap;font-size:13px;line-height:1.5">'+escHtml(r.sprints)+'</div>'+
+      '<div class="form-group" style="margin-top:12px"><label>Задачи (по строке)</label><textarea id="spT" placeholder="Задача 1\nЗадача 2"></textarea></div>',
+      async function(){
+        var tasks=document.getElementById('spT').value.split('\n').filter(function(t){return t.trim()});
+        if(tasks.length){
+          await api('/api/sprints','POST',{project_id:pid,name:'Спринт',tasks:tasks,duration:7});
+          toast('🏃 Создан!','success');closeModal();await loadAll();openProj(pid);
+        }
+      });
+  }
+}
 
-async function togTask(qid,i){const r=await api('/api/quests/'+qid+'/toggle-task','POST',{index:i});if(r?.completed&&!S.quests.find(q=>q.id===qid)?.completed)toast('⚔️ Квест завершён!','achievement');await loadAll()}
-function newQuest(){const po=S.projects.filter(p=>p.status==='active').map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
-showModal('Квест',`<div class="form-group"><label>Название</label><input id="qN" placeholder="Квест"></div><div class="form-group"><label>Проект</label><select id="qP"><option value="">—</option>${po}</select></div><div class="form-group"><label>Приоритет</label><select id="qPr"><option value="normal">Обычный</option><option value="urgent">Срочный</option></select></div><div class="form-group"><label>Задачи (по строке)</label><textarea id="qT" placeholder="Задача 1\nЗадача 2"></textarea></div>`,async()=>{const t=document.getElementById('qT').value.split('\n').filter(x=>x.trim());
-await api('/api/quests','POST',{name:document.getElementById('qN').value,project_id:document.getElementById('qP').value,priority:document.getElementById('qPr').value,tasks:t,xp_reward:document.getElementById('qPr').value==='urgent'?250:150});
-toast('⚔️ Создан!','success');closeModal();await loadAll()})}
+/* ======================== QUESTS ======================== */
+function rQuests(){
+  var a=[],d=[];
+  for(var i=0;i<S.quests.length;i++){
+    if(S.quests[i].completed)d.push(S.quests[i]);else a.push(S.quests[i]);
+  }
+  var html='<button class="btn btn-primary" onclick="newQuest()" style="margin-bottom:12px">➕ Квест</button>';
+  if(a.length)html+='<div class="section-title">Активные ('+a.length+')</div>';
+  for(var i=0;i<a.length;i++)html+=rQuestItem(a[i]);
+  if(!a.length)html+='<div class="card"><p style="color:var(--text3)">Все выполнены! 🎉</p></div>';
+  if(d.length){
+    html+='<div class="section-title" style="color:var(--text3)">✅ Выполнено ('+d.length+')</div>';
+    var show=d.slice(-5);
+    for(var i=0;i<show.length;i++)html+=rQuestItem(show[i]);
+  }
+  return html;
+}
 
-// === SPRINTS ===
-function rSprints(){const a=S.sprints.filter(s=>!s.completed),d=S.sprints.filter(s=>s.completed);
-return `${a.length?`<div class="section-title">🏃 Активные (${a.length})</div>`:''}${a.map(s=>rSprintItem(s)).join('')}
-${!a.length?'<div class="card"><p style="color:var(--text3)">Нет спринтов. Создай в проекте!</p></div>':''}
-${d.length?`<div class="section-title" style="color:var(--text3)">✅ Завершено (${d.length})</div>${d.slice(-3).map(s=>rSprintItem(s)).join('')}`:''}`}
+function rQuestItem(q){
+  var pn='';
+  for(var i=0;i<S.projects.length;i++){if(S.projects[i].id===q.project_id){pn=S.projects[i].name;break}}
+  var html='<div class="quest-item '+(q.completed?'quest-completed':'')+'"><div class="quest-header"><div>'+
+    '<span class="quest-name">'+escHtml(q.name)+'</span>'+
+    (pn?'<span style="font-size:10px;color:var(--text3);margin-left:6px">📂 '+escHtml(pn)+'</span>':'')+
+    '</div><div style="display:flex;gap:6px;align-items:center">'+
+    '<span class="quest-priority priority-'+(q.priority||'normal')+'">'+(q.priority==='urgent'?'🔴':'🟢')+'</span>'+
+    '<span class="quest-xp">+'+(q.xp_reward||100)+'</span></div></div>';
+  var tasks=q.tasks||[];
+  for(var i=0;i<tasks.length;i++){
+    var t=tasks[i];
+    html+='<div class="quest-task '+(t.done?'done':'')+'" onclick="togTask(\''+q.id+'\','+i+')">'+
+      '<input type="checkbox" '+(t.done?'checked':'')+' onclick="event.stopPropagation();togTask(\''+q.id+'\','+i+')">'+
+      '<span>'+escHtml(t.text)+'</span></div>';
+  }
+  html+='</div>';
+  return html;
+}
 
-function rSprintItem(s){const pn=S.projects.find(p=>p.id===s.project_id)?.name||'';
-const tasks=s.tasks||[];const done=tasks.filter(t=>t.done).length;const pct=tasks.length?(done/tasks.length*100):0;
-const overdue=s.end_date&&new Date(s.end_date)<new Date()&&!s.completed;
-return `<div class="sprint-item"><div class="sprint-header"><div><strong>${s.name} #${s.number||1}</strong>${pn?`<span style="font-size:10px;color:var(--text3);margin-left:6px">📂 ${pn}</span>`:''}</div><div style="font-size:10px;color:${overdue?'var(--red)':'var(--text3)'}">${s.start_date?.slice(5)||''} → ${s.end_date?.slice(5)||''}${overdue?' ⚠️':''}</div></div>
-<div class="sprint-progress"><div class="sprint-progress-fill" style="width:${pct}%"></div></div>
-<div style="font-size:10px;color:var(--text3);margin-bottom:6px">${done}/${tasks.length} задач (${Math.round(pct)}%)</div>
-${tasks.map((t,i)=>`<div class="quest-task ${t.done?'done':''}" onclick="togSprint('${s.id}',${i})"><input type="checkbox" ${t.done?'checked':''} onclick="event.stopPropagation();togSprint('${s.id}',${i})"><span>${t.text}</span></div>`).join('')}</div>`}
+async function togTask(qid,i){
+  var r=await api('/api/quests/'+qid+'/toggle-task','POST',{index:i});
+  var old=null;
+  for(var j=0;j<S.quests.length;j++){if(S.quests[j].id===qid){old=S.quests[j];break}}
+  if(r&&r.completed&&old&&!old.completed)toast('⚔️ Квест завершён!','achievement');
+  await loadAll();
+}
 
-async function togSprint(sid,i){const r=await api('/api/sprints/'+sid+'/toggle-task','POST',{index:i});if(r?.completed)toast('🏃 Спринт завершён! +300 XP','achievement');await loadAll()}
+function newQuest(){
+  var po='<option value="">—</option>';
+  for(var i=0;i<S.projects.length;i++){
+    if(S.projects[i].status==='active')po+='<option value="'+S.projects[i].id+'">'+escHtml(S.projects[i].name)+'</option>';
+  }
+  showModal('Квест',
+    '<div class="form-group"><label>Название</label><input id="qN" placeholder="Квест"></div>'+
+    '<div class="form-group"><label>Проект</label><select id="qP">'+po+'</select></div>'+
+    '<div class="form-group"><label>Приоритет</label><select id="qPr"><option value="normal">Обычный</option><option value="urgent">Срочный</option></select></div>'+
+    '<div class="form-group"><label>Задачи (по строке)</label><textarea id="qT" placeholder="Задача 1\nЗадача 2"></textarea></div>',
+    async function(){
+      var t=document.getElementById('qT').value.split('\n').filter(function(x){return x.trim()});
+      var pr=document.getElementById('qPr').value;
+      await api('/api/quests','POST',{name:document.getElementById('qN').value,project_id:document.getElementById('qP').value,priority:pr,tasks:t,xp_reward:pr==='urgent'?250:150});
+      toast('⚔️ Создан!','success');closeModal();await loadAll();
+    });
+}
 
-// === RESEARCH ===
-function rResearch(){return `<div class="card"><h2>🔍 Анализ ниши</h2><div class="form-group"><input id="niIn" placeholder="Ниша..."></div><div style="display:flex;gap:6px"><button class="btn btn-primary" onclick="aNiche()">📊 Анализ</button><button class="btn btn-secondary" onclick="aScore()">📈 Скоринг</button></div><div id="niRes" style="margin-top:12px"></div></div>
-<div class="card"><h2>🔎 Reddit</h2><div class="form-group"><input id="rdIn" placeholder="Поиск болей..."></div><button class="btn btn-primary" onclick="sReddit()">🔎 Найти</button><div id="rdRes" style="margin-top:12px"></div></div>
-<div class="card"><h2>📈 Тренды</h2><div class="form-group"><input id="trIn" placeholder="Тема..."></div><button class="btn btn-primary" onclick="sTrends()">📈 Анализ</button><div id="trRes" style="margin-top:12px"></div></div>
-<div class="card"><h2>🎬 YouTube</h2><div class="form-group"><input id="ytIn" placeholder="URL видео..."></div><button class="btn btn-primary" onclick="aYoutube()">🎬 Анализ</button><div id="ytRes" style="margin-top:12px"></div></div>`}
+/* ======================== SPRINTS ======================== */
+function rSprints(){
+  var a=[],d=[];
+  for(var i=0;i<S.sprints.length;i++){
+    if(S.sprints[i].completed)d.push(S.sprints[i]);else a.push(S.sprints[i]);
+  }
+  var html='';
+  if(a.length)html+='<div class="section-title">🏃 Активные ('+a.length+')</div>';
+  for(var i=0;i<a.length;i++)html+=rSprintItem(a[i]);
+  if(!a.length)html+='<div class="card"><p style="color:var(--text3)">Нет спринтов. Создай в проекте!</p></div>';
+  if(d.length){
+    html+='<div class="section-title" style="color:var(--text3)">✅ Завершено ('+d.length+')</div>';
+    var show=d.slice(-3);
+    for(var i=0;i<show.length;i++)html+=rSprintItem(show[i]);
+  }
+  return html;
+}
 
-async function aNiche(){const n=document.getElementById('niIn').value;if(!n)return;document.getElementById('niRes').innerHTML='<p style="color:var(--accent)">⏳...</p>';
-const r=await api('/api/analyze-niche','POST',{niche:n});document.getElementById('niRes').innerHTML=r?.analysis?`<div style="white-space:pre-wrap;font-size:13px;line-height:1.5">${r.analysis}</div>`:'<p style="color:var(--red)">Ошибка</p>';await loadAll()}
+function rSprintItem(s){
+  var pn='';
+  for(var i=0;i<S.projects.length;i++){if(S.projects[i].id===s.project_id){pn=S.projects[i].name;break}}
+  var tasks=s.tasks||[];var done=0;
+  for(var i=0;i<tasks.length;i++){if(tasks[i].done)done++}
+  var pct=tasks.length?(done/tasks.length*100):0;
+  var overdue=s.end_date&&new Date(s.end_date)<new Date()&&!s.completed;
 
-async function aScore(){const idea=document.getElementById('niIn').value;if(!idea)return;document.getElementById('niRes').innerHTML='<p style="color:var(--accent)">⏳...</p>';
-const r=await api('/api/score-idea','POST',{idea});if(r&&r.total!==undefined){const c=r.total>=70?'var(--green)':r.total>=40?'var(--orange)':'var(--red)';
-document.getElementById('niRes').innerHTML=`<div style="text-align:center;margin-bottom:12px"><div style="font-size:40px;font-weight:700;color:${c}">${r.total}/100</div><div style="color:var(--text2)">${r.verdict||''}</div></div><div class="stats-grid"><div class="stat-card"><div class="num">${r.market||0}</div><div class="label">Рынок</div></div><div class="stat-card"><div class="num">${r.competition||0}</div><div class="label">Конкуренция</div></div><div class="stat-card"><div class="num">${r.mvp_speed||0}</div><div class="label">MVP</div></div><div class="stat-card"><div class="num">${r.monetization||0}</div><div class="label">Монетиз.</div></div><div class="stat-card"><div class="num">${r.scalability||0}</div><div class="label">Масштаб</div></div></div>`}}
+  var html='<div class="sprint-item"><div class="sprint-header"><div>'+
+    '<strong>'+escHtml(s.name)+' #'+(s.number||1)+'</strong>'+
+    (pn?'<span style="font-size:10px;color:var(--text3);margin-left:6px">📂 '+escHtml(pn)+'</span>':'')+
+    '</div><div style="font-size:10px;color:'+(overdue?'var(--red)':'var(--text3)')+'">'+(s.start_date?s.start_date.slice(5):'')+' → '+(s.end_date?s.end_date.slice(5):'')+(overdue?' ⚠️':'')+'</div></div>'+
+    '<div class="sprint-progress"><div class="sprint-progress-fill" style="width:'+pct+'%"></div></div>'+
+    '<div style="font-size:10px;color:var(--text3);margin-bottom:6px">'+done+'/'+tasks.length+' ('+Math.round(pct)+'%)</div>';
 
-async function sReddit(){const q=document.getElementById('rdIn').value;if(!q)return;document.getElementById('rdRes').innerHTML='<p style="color:var(--accent)">⏳...</p>';
-const r=await api('/api/reddit-search','POST',{query:q});if(r?.posts){document.getElementById('rdRes').innerHTML=
-r.posts.slice(0,5).map(p=>`<div class="reddit-post"><div class="post-title">${p.title}</div><div class="post-meta">r/${p.subreddit} | ⬆️${p.score} | 💬${p.comments} <button class="btn btn-sm btn-secondary" onclick="savePain('${p.title.replace(/'/g,"\\'")}','reddit','${q}','${p.url}')">💾</button></div>${p.text?`<div class="post-text">${p.text.slice(0,200)}</div>`:''}</div>`).join('')+
-`<div class="card" style="margin-top:8px"><h3>🧠 AI</h3><div style="white-space:pre-wrap;font-size:13px;line-height:1.5">${r.analysis||''}</div></div>`;await loadAll()}}
+  for(var i=0;i<tasks.length;i++){
+    var t=tasks[i];
+    html+='<div class="quest-task '+(t.done?'done':'')+'" onclick="togSprint(\''+s.id+'\','+i+')">'+
+      '<input type="checkbox" '+(t.done?'checked':'')+' onclick="event.stopPropagation();togSprint(\''+s.id+'\','+i+')">'+
+      '<span>'+escHtml(t.text)+'</span></div>';
+  }
+  html+='</div>';
+  return html;
+}
 
-async function sTrends(){const q=document.getElementById('trIn').value;if(!q)return;document.getElementById('trRes').innerHTML='<p style="color:var(--accent)">⏳...</p>';
-const r=await api('/api/trends','POST',{query:q});document.getElementById('trRes').innerHTML=r?.analysis?`<div style="white-space:pre-wrap;font-size:13px;line-height:1.5">${r.analysis}</div>`:'<p style="color:var(--red)">Ошибка</p>';await loadAll()}
+async function togSprint(sid,i){
+  var r=await api('/api/sprints/'+sid+'/toggle-task','POST',{index:i});
+  if(r&&r.completed)toast('🏃 Спринт завершён! +300 XP','achievement');
+  await loadAll();
+}
 
-async function aYoutube(){const u=document.getElementById('ytIn').value;if(!u)return;document.getElementById('ytRes').innerHTML='<p style="color:var(--accent)">⏳...</p>';
-const r=await api('/api/youtube-analyze','POST',{url:u});document.getElementById('ytRes').innerHTML=r?.analysis?`<div style="white-space:pre-wrap;font-size:13px;line-height:1.5">${r.analysis}</div>`:'<p style="color:var(--red)">Ошибка</p>';await loadAll()}
+/* ======================== RESEARCH ======================== */
+function rResearch(){
+  return '<div class="card"><h2>🔍 Анализ ниши</h2>'+
+    '<div class="form-group"><input id="niIn" placeholder="Ниша..."></div>'+
+    '<div style="display:flex;gap:6px">'+
+    '<button class="btn btn-primary" onclick="aNiche()">📊 Анализ</button>'+
+    '<button class="btn btn-secondary" onclick="aScore()">📈 Скоринг</button></div>'+
+    '<div id="niRes" style="margin-top:12px"></div></div>'+
 
-// === PAINS ===
-function rPains(){const ps=S.pains||[];
-return `<div style="display:flex;gap:6px;margin-bottom:12px"><button class="btn btn-primary" onclick="newPain()">➕ Боль</button><span style="color:var(--text3);font-size:12px;align-self:center">${ps.length} сохранено</span></div>
-${ps.length?ps.map(p=>`<div class="pain-item"><div style="display:flex;justify-content:space-between;align-items:center"><span>${p.text}</span><div style="display:flex;gap:4px"><span class="pain-status status-${p.status||'new'}">${p.status||'new'}</span>
-<button class="btn btn-sm btn-secondary" onclick="updPain('${p.id}','validated')">✅</button>
-<button class="btn btn-sm btn-secondary" onclick="updPain('${p.id}','rejected')">❌</button>
-<button class="btn btn-sm btn-danger btn-icon" onclick="delPain('${p.id}')">🗑</button></div></div>
-<div class="pain-source">${p.source||'manual'}${p.niche?' | '+p.niche:''} | ${p.created_at?.slice(0,10)||''}</div></div>`).join(''):'<div class="card"><p style="color:var(--text3)">Ищи боли в Исследованиях и сохраняй сюда!</p></div>'}`}
+    '<div class="card"><h2>🔎 Reddit</h2>'+
+    '<div class="form-group"><input id="rdIn" placeholder="Поиск болей..."></div>'+
+    '<button class="btn btn-primary" onclick="sReddit()">🔎 Найти</button>'+
+    '<div id="rdRes" style="margin-top:12px"></div></div>'+
 
-function newPain(){showModal('Новая боль',`<div class="form-group"><label>Описание боли</label><textarea id="painT" placeholder="Люди жалуются что..."></textarea></div><div class="form-group"><label>Ниша</label><input id="painN" placeholder="SaaS, здоровье..."></div>`,async()=>{await api('/api/pains','POST',{text:document.getElementById('painT').value,niche:document.getElementById('painN').value});toast('🎯 Сохранено!','success');closeModal();await loadAll()})}
+    '<div class="card"><h2>📈 Тренды</h2>'+
+    '<div class="form-group"><input id="trIn" placeholder="Тема..."></div>'+
+    '<button class="btn btn-primary" onclick="sTrends()">📈 Анализ</button>'+
+    '<div id="trRes" style="margin-top:12px"></div></div>'+
 
-async function savePain(text,src,niche,url){await api('/api/pains','POST',{text,source:src,niche,url});toast('💾 Боль сохранена!','success');await loadAll()}
-async function updPain(id,status){await api('/api/pains/'+id,'PUT',{status});await loadAll()}
+    '<div class="card"><h2>🎬 YouTube</h2>'+
+    '<div class="form-group"><input id="ytIn" placeholder="URL видео..."></div>'+
+    '<button class="btn btn-primary" onclick="aYoutube()">🎬 Анализ</button>'+
+    '<div id="ytRes" style="margin-top:12px"></div></div>';
+}
+
+async function aNiche(){
+  var n=document.getElementById('niIn').value;
+  if(!n){toast('Введи нишу','error');return}
+  document.getElementById('niRes').innerHTML='<p style="color:var(--accent)">⏳ Анализирую...</p>';
+  try{
+    var r=await api('/api/analyze-niche','POST',{niche:n});
+    document.getElementById('niRes').innerHTML=r&&r.analysis?
+      '<div style="white-space:pre-wrap;font-size:13px;line-height:1.5">'+escHtml(r.analysis)+'</div>':
+      '<p style="color:var(--red)">Ошибка</p>';
+  }catch(e){document.getElementById('niRes').innerHTML='<p style="color:var(--red)">'+e+'</p>'}
+}
+
+async function aScore(){
+  var idea=document.getElementById('niIn').value;
+  if(!idea){toast('Введи идею','error');return}
+  document.getElementById('niRes').innerHTML='<p style="color:var(--accent)">⏳ Оцениваю...</p>';
+  try{
+    var r=await api('/api/score-idea','POST',{idea:idea});
+    if(r&&r.total!==undefined){
+      var c=r.total>=70?'var(--green)':r.total>=40?'var(--orange)':'var(--red)';
+      document.getElementById('niRes').innerHTML=
+        '<div style="text-align:center;margin-bottom:12px">'+
+        '<div style="font-size:40px;font-weight:700;color:'+c+'">'+r.total+'/100</div>'+
+        '<div style="color:var(--text2)">'+escHtml(r.verdict||'')+'</div></div>'+
+        '<div class="stats-grid">'+
+        '<div class="stat-card"><div class="num">'+(r.market||0)+'</div><div class="label">Рынок</div></div>'+
+        '<div class="stat-card"><div class="num">'+(r.competition||0)+'</div><div class="label">Конкуренция</div></div>'+
+        '<div class="stat-card"><div class="num">'+(r.mvp_speed||0)+'</div><div class="label">MVP</div></div>'+
+        '<div class="stat-card"><div class="num">'+(r.monetization||0)+'</div><div class="label">Монетиз.</div></div>'+
+        '<div class="stat-card"><div class="num">'+(r.scalability||0)+'</div><div class="label">Масштаб</div></div></div>';
+    }else{document.getElementById('niRes').innerHTML='<p style="color:var(--red)">Ошибка</p>'}
+  }catch(e){document.getElementById('niRes').innerHTML='<p style="color:var(--red)">'+e+'</p>'}
+}
+
+async function sReddit(){
+  var q=document.getElementById('rdIn').value;
+  if(!q){toast('Введи запрос','error');return}
+  document.getElementById('rdRes').innerHTML='<p style="color:var(--accent)">⏳ Ищу...</p>';
+  try{
+    var r=await api('/api/reddit-search','POST',{query:q});
+    if(r&&r.posts){
+      window._rdPosts=r.posts;
+      var html='';
+      var posts=r.posts.slice(0,5);
+      for(var i=0;i<posts.length;i++){
+        var p=posts[i];
+        html+='<div class="reddit-post">'+
+          '<div class="post-title">'+escHtml(p.title)+'</div>'+
+          '<div class="post-meta">r/'+escHtml(p.subreddit)+' | ⬆️'+p.score+' | 💬'+p.comments+
+          ' <button class="btn btn-sm btn-secondary" onclick="saveRdPain('+i+')">💾</button></div>'+
+          (p.text?'<div class="post-text">'+escHtml(p.text.slice(0,200))+'</div>':'')+
+          '</div>';
+      }
+      html+='<div class="card" style="margin-top:8px"><h3>🧠 AI</h3>'+
+        '<div style="white-space:pre-wrap;font-size:13px;line-height:1.5">'+escHtml(r.analysis||'')+'</div></div>';
+      document.getElementById('rdRes').innerHTML=html;
+    }else{document.getElementById('rdRes').innerHTML='<p style="color:var(--red)">Нет результатов</p>'}
+  }catch(e){document.getElementById('rdRes').innerHTML='<p style="color:var(--red)">'+e+'</p>'}
+}
+
+async function saveRdPain(i){
+  var p=window._rdPosts&&window._rdPosts[i];
+  if(!p)return;
+  await api('/api/pains','POST',{text:p.title,source:'reddit',niche:'',url:p.url});
+  toast('💾 Боль сохранена!','success');
+}
+
+async function sTrends(){
+  var q=document.getElementById('trIn').value;
+  if(!q){toast('Введи тему','error');return}
+  document.getElementById('trRes').innerHTML='<p style="color:var(--accent)">⏳ Тренды...</p>';
+  try{
+    var r=await api('/api/trends','POST',{query:q});
+    document.getElementById('trRes').innerHTML=r&&r.analysis?
+      '<div style="white-space:pre-wrap;font-size:13px;line-height:1.5">'+escHtml(r.analysis)+'</div>':
+      '<p style="color:var(--red)">Ошибка</p>';
+  }catch(e){document.getElementById('trRes').innerHTML='<p style="color:var(--red)">'+e+'</p>'}
+}
+
+async function aYoutube(){
+  var u=document.getElementById('ytIn').value;
+  if(!u){toast('Введи URL','error');return}
+  document.getElementById('ytRes').innerHTML='<p style="color:var(--accent)">⏳ YouTube...</p>';
+  try{
+    var r=await api('/api/youtube-analyze','POST',{url:u});
+    document.getElementById('ytRes').innerHTML=r&&r.analysis?
+      '<div style="white-space:pre-wrap;font-size:13px;line-height:1.5">'+escHtml(r.analysis)+'</div>':
+      '<p style="color:var(--red)">Ошибка</p>';
+  }catch(e){document.getElementById('ytRes').innerHTML='<p style="color:var(--red)">'+e+'</p>'}
+}
+
+/* ======================== PAINS ======================== */
+function rPains(){
+  var ps=S.pains||[];
+  var html='<div style="display:flex;gap:6px;margin-bottom:12px">'+
+    '<button class="btn btn-primary" onclick="newPain()">➕ Боль</button>'+
+    '<span style="color:var(--text3);font-size:12px;align-self:center">'+ps.length+' сохранено</span></div>';
+
+  if(ps.length){
+    for(var i=0;i<ps.length;i++){
+      var p=ps[i];
+      html+='<div class="pain-item"><div style="display:flex;justify-content:space-between;align-items:center">'+
+        '<span>'+escHtml(p.text)+'</span>'+
+        '<div style="display:flex;gap:4px">'+
+        '<span class="pain-status status-'+(p.status||'new')+'">'+(p.status||'new')+'</span>'+
+        '<button class="btn btn-sm btn-secondary" onclick="updPain(\''+p.id+'\',\'validated\')">✅</button>'+
+        '<button class="btn btn-sm btn-secondary" onclick="updPain(\''+p.id+'\',\'rejected\')">❌</button>'+
+        '<button class="btn btn-sm btn-danger btn-icon" onclick="delPain(\''+p.id+'\')">🗑</button>'+
+        '</div></div>'+
+        '<div class="pain-source">'+(p.source||'manual')+(p.niche?' | '+escHtml(p.niche):'')+' | '+(p.created_at?p.created_at.slice(0,10):'')+'</div></div>';
+    }
+  }else{
+    html+='<div class="card"><p style="color:var(--text3)">Ищи боли в Исследованиях и сохраняй!</p></div>';
+  }
+  return html;
+}
+
+function newPain(){
+  showModal('Новая боль',
+    '<div class="form-group"><label>Описание</label><textarea id="painT" placeholder="Люди жалуются..."></textarea></div>'+
+    '<div class="form-group"><label>Ниша</label><input id="painN" placeholder="SaaS..."></div>',
+    async function(){
+      await api('/api/pains','POST',{text:document.getElementById('painT').value,niche:document.getElementById('painN').value});
+      toast('🎯 Сохранено!','success');closeModal();await loadAll();
+    });
+}
+
+async function updPain(id,status){await api('/api/pains/'+id,'PUT',{status:status});await loadAll()}
 async function delPain(id){await api('/api/pains/'+id,'DELETE');await loadAll()}
 
-// === FUNNEL ===
-function rFunnel(){const stages=['idea','validation','mvp','launch','growth'],names={idea:'💡 Идея',validation:'🔍 Валидация',mvp:'🛠 MVP',launch:'🚀 Запуск',growth:'📈 Рост'};
-const active=S.projects.filter(p=>p.status!=='archived');
-return `<div class="card"><h2>📈 Воронка гипотез</h2><p style="color:var(--text2);font-size:12px;margin-bottom:12px">Кнопками ←→ двигай проекты по стадиям</p></div>
-${stages.map(s=>{const ps=active.filter(p=>(p.stage||'idea')===s);
-return `<div class="card"><h2>${names[s]} <span style="color:var(--text3);font-size:13px">(${ps.length})</span></h2>
-${ps.length?ps.map(p=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px;background:var(--bg3);border-radius:8px;margin-bottom:4px"><div><strong style="cursor:pointer" onclick="openProj('${p.id}')">${p.name}</strong>${p.revenue>0?`<span style="color:var(--green);margin-left:6px">$${p.revenue}</span>`:''}</div><div style="display:flex;gap:4px">${s!=='idea'?`<button class="btn btn-sm btn-secondary" onclick="chgStage('${p.id}','${stages[stages.indexOf(s)-1]}')">←</button>`:''} ${s!=='growth'?`<button class="btn btn-sm btn-primary" onclick="chgStage('${p.id}','${stages[stages.indexOf(s)+1]}')">→</button>`:''}</div></div>`).join(''):'<p style="color:var(--text3);font-size:12px">Пусто</p>'}</div>`}).join('')}`}
+/* ======================== FUNNEL ======================== */
+function rFunnel(){
+  var stages=['idea','validation','mvp','launch','growth'];
+  var names={idea:'💡 Идея',validation:'🔍 Валидация',mvp:'🛠 MVP',launch:'🚀 Запуск',growth:'📈 Рост'};
+  var active=S.projects.filter(function(p){return p.status!=='archived'});
 
-// === ACHIEVEMENTS ===
-function rAch(){const u=S.achievements.filter(a=>a.unlocked),l=S.achievements.filter(a=>!a.unlocked);
-return `<div class="card"><h2>🏆 Достижения (${u.length}/${S.achievements.length})</h2><div class="xp-bar" style="margin-bottom:12px"><div class="xp-bar-fill" style="width:${S.achievements.length?u.length/S.achievements.length*100:0}%"></div></div><div class="ach-grid">${u.map(a=>`<div class="ach-item" title="${a.desc}"><span class="ach-icon">${a.icon}</span><span class="ach-name">${a.name}</span></div>`).join('')}${l.map(a=>`<div class="ach-item locked" title="${a.desc}"><span class="ach-icon">${a.icon}</span><span class="ach-name">${a.name}</span></div>`).join('')}</div></div>`}
+  var html='<div class="card"><h2>📈 Воронка гипотез</h2>'+
+    '<p style="color:var(--text2);font-size:12px;margin-bottom:12px">Кнопками ←→ двигай проекты</p></div>';
 
-// === SETTINGS ===
-function rSettings(){return `<div class="card"><h2>💾 Данные</h2><p style="color:var(--text2);font-size:12px;margin-bottom:10px">Сохрани данные перед обновлением сервера</p><div style="display:flex;gap:6px;flex-wrap:wrap"><a href="/api/export" class="btn btn-primary" download>📥 Скачать</a><button class="btn btn-secondary" onclick="showImport()">📤 Загрузить</button></div></div>
-<div class="card"><h2>📊 Инфо</h2><div style="font-size:12px;color:var(--text2);line-height:1.8">
-<div>📊 Проектов: ${S.stats.total_projects||0} (архив: ${S.stats.archived_projects||0})</div>
-<div>⚔️ Квестов: ${S.stats.total_quests||0} (✅ ${S.stats.completed_quests||0})</div>
-<div>🏃 Спринтов: ${(S.stats.active_sprints||0)+(S.stats.completed_sprints||0)} (✅ ${S.stats.completed_sprints||0})</div>
-<div>💬 Сообщений: ${S.stats.total_messages||0}</div>
-<div>🔍 Ниш: ${S.stats.niches_analyzed||0}</div>
-<div>🎯 Болей: ${S.stats.saved_pains||0}</div>
-<div>🏆 Достижений: ${S.stats.achievements_unlocked||0}/${S.stats.achievements_total||0}</div>
-<div>🔥 Рекорд streak: ${S.player.max_streak||0}д</div></div></div>
-<div class="card"><h2>❤️ Health</h2><button class="btn btn-secondary" onclick="chkHealth()">Проверить</button><div id="hlRes" style="margin-top:8px"></div></div>`}
+  for(var si=0;si<stages.length;si++){
+    var s=stages[si];
+    var ps=active.filter(function(p){return (p.stage||'idea')===s});
+    html+='<div class="card"><h2>'+names[s]+' <span style="color:var(--text3);font-size:13px">('+ps.length+')</span></h2>';
+    if(ps.length){
+      for(var i=0;i<ps.length;i++){
+        var p=ps[i];
+        html+='<div style="display:flex;align-items:center;justify-content:space-between;padding:8px;background:var(--bg3);border-radius:8px;margin-bottom:4px">'+
+          '<div><strong style="cursor:pointer" onclick="openProj(\''+p.id+'\')">'+escHtml(p.name)+'</strong>'+
+          (p.revenue>0?'<span style="color:var(--green);margin-left:6px">$'+p.revenue+'</span>':'')+'</div>'+
+          '<div style="display:flex;gap:4px">';
+        if(si>0)html+='<button class="btn btn-sm btn-secondary" onclick="chgStage(\''+p.id+'\',\''+stages[si-1]+'\')">←</button>';
+        if(si<stages.length-1)html+='<button class="btn btn-sm btn-primary" onclick="chgStage(\''+p.id+'\',\''+stages[si+1]+'\')">→</button>';
+        html+='</div></div>';
+      }
+    }else{
+      html+='<p style="color:var(--text3);font-size:12px">Пусто</p>';
+    }
+    html+='</div>';
+  }
+  return html;
+}
 
-function showImport(){showModal('Импорт',`<div class="form-group"><label>JSON файл</label><input type="file" id="impF" accept=".json" style="padding:6px"></div><p style="color:var(--orange);font-size:11px">⚠️ Перезапишет данные!</p>`,async()=>{const f=document.getElementById('impF').files[0];if(!f)return;try{const d=JSON.parse(await f.text());const r=await api('/api/import','POST',d);if(r?.ok){toast('📤 Восстановлено!','success');closeModal();await loadAll()}}catch(e){toast('❌ Ошибка','error')}})}
-async function chkHealth(){const r=await fetch('/health').then(r=>r.json());document.getElementById('hlRes').innerHTML=`<pre style="font-size:11px;color:var(--green);background:var(--bg3);padding:10px;border-radius:8px">${JSON.stringify(r,null,2)}</pre>`}
+/* ======================== ACHIEVEMENTS ======================== */
+function rAch(){
+  var u=[],l=[];
+  for(var i=0;i<S.achievements.length;i++){
+    if(S.achievements[i].unlocked)u.push(S.achievements[i]);else l.push(S.achievements[i]);
+  }
+  var pct=S.achievements.length?(u.length/S.achievements.length*100):0;
+  var html='<div class="card"><h2>🏆 Достижения ('+u.length+'/'+S.achievements.length+')</h2>'+
+    '<div class="xp-bar" style="margin-bottom:12px"><div class="xp-bar-fill" style="width:'+pct+'%"></div></div>'+
+    '<div class="ach-grid">';
+  for(var i=0;i<u.length;i++){
+    html+='<div class="ach-item" title="'+escHtml(u[i].desc)+'"><span class="ach-icon">'+u[i].icon+'</span><span class="ach-name">'+escHtml(u[i].name)+'</span></div>';
+  }
+  for(var i=0;i<l.length;i++){
+    html+='<div class="ach-item locked" title="'+escHtml(l[i].desc)+'"><span class="ach-icon">'+l[i].icon+'</span><span class="ach-name">'+escHtml(l[i].name)+'</span></div>';
+  }
+  html+='</div></div>';
+  return html;
+}
 
-// === MISSION ===
-async function togMission(i){const r=await api('/api/mission/toggle','POST',{index:i});if(r){S.mission=r;if(r.completed)toast('🎯 Миссия выполнена! +500 XP','achievement');await loadAll()}}
+/* ======================== SETTINGS ======================== */
+function rSettings(){
+  return '<div class="card"><h2>💾 Данные</h2>'+
+    '<p style="color:var(--text2);font-size:12px;margin-bottom:10px">Сохрани перед обновлением сервера</p>'+
+    '<div style="display:flex;gap:6px;flex-wrap:wrap">'+
+    '<a href="/api/export" class="btn btn-primary" download>📥 Скачать</a>'+
+    '<button class="btn btn-secondary" onclick="showImport()">📤 Загрузить</button></div></div>'+
 
-// === MODAL ===
-function showModal(title,content,onOk){const m=document.createElement('div');m.className='modal-overlay';m.id='modal';
-m.innerHTML=`<div class="modal"><h2>${title}</h2>${content}<div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Отмена</button>${onOk?'<button class="btn btn-primary" id="modalOk">OK</button>':''}</div></div>`;
-document.body.appendChild(m);m.addEventListener('click',e=>{if(e.target===m)closeModal()});if(onOk)document.getElementById('modalOk').addEventListener('click',onOk)}
-function closeModal(){document.getElementById('modal')?.remove()}
+    '<div class="card"><h2>📊 Инфо</h2><div style="font-size:12px;color:var(--text2);line-height:1.8">'+
+    '<div>📊 Проектов: '+(S.stats.total_projects||0)+' (архив: '+(S.stats.archived_projects||0)+')</div>'+
+    '<div>⚔️ Квестов: '+(S.stats.total_quests||0)+' (✅ '+(S.stats.completed_quests||0)+')</div>'+
+    '<div>🏃 Спринтов: '+((S.stats.active_sprints||0)+(S.stats.completed_sprints||0))+' (✅ '+(S.stats.completed_sprints||0)+')</div>'+
+    '<div>💬 Сообщений: '+(S.stats.total_messages||0)+'</div>'+
+    '<div>🔍 Ниш: '+(S.stats.niches_analyzed||0)+'</div>'+
+    '<div>🎯 Болей: '+(S.stats.saved_pains||0)+'</div>'+
+    '<div>🏆 Достижений: '+(S.stats.achievements_unlocked||0)+'/'+(S.stats.achievements_total||0)+'</div>'+
+    '<div>🔥 Рекорд: '+(S.player.max_streak||0)+'д</div></div></div>'+
 
+    '<div class="card"><h2>❤️ Health</h2>'+
+    '<button class="btn btn-secondary" onclick="chkHealth()">Проверить</button>'+
+    '<div id="hlRes" style="margin-top:8px"></div></div>';
+}
+
+function showImport(){
+  showModal('Импорт',
+    '<div class="form-group"><label>JSON файл</label><input type="file" id="impF" accept=".json" style="padding:6px"></div>'+
+    '<p style="color:var(--orange);font-size:11px">⚠️ Перезапишет данные!</p>',
+    async function(){
+      var f=document.getElementById('impF').files[0];
+      if(!f)return;
+      try{
+        var d=JSON.parse(await f.text());
+        var r=await api('/api/import','POST',d);
+        if(r&&r.ok){toast('📤 Восстановлено!','success');closeModal();await loadAll()}
+      }catch(e){toast('❌ Ошибка','error')}
+    });
+}
+
+async function chkHealth(){
+  var r=await fetch('/health').then(function(r){return r.json()});
+  document.getElementById('hlRes').innerHTML='<pre style="font-size:11px;color:var(--green);background:var(--bg3);padding:10px;border-radius:8px">'+escHtml(JSON.stringify(r,null,2))+'</pre>';
+}
+
+/* ======================== MISSION ======================== */
+async function togMission(i){
+  var r=await api('/api/mission/toggle','POST',{index:i});
+  if(r){S.mission=r;if(r.completed)toast('🎯 Миссия! +500 XP','achievement');await loadAll()}
+}
+
+/* ======================== MODAL ======================== */
+function showModal(title,content,onOk){
+  var m=document.createElement('div');
+  m.className='modal-overlay';m.id='modal';
+  m.innerHTML='<div class="modal"><h2>'+title+'</h2>'+content+
+    '<div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Отмена</button>'+
+    (onOk?'<button class="btn btn-primary" id="modalOk">OK</button>':'')+
+    '</div></div>';
+  document.body.appendChild(m);
+  m.addEventListener('click',function(e){if(e.target===m)closeModal()});
+  if(onOk){var okBtn=document.getElementById('modalOk');if(okBtn)okBtn.addEventListener('click',onOk)}
+}
+
+function closeModal(){var m=document.getElementById('modal');if(m)m.remove()}
+
+/* ======================== INIT ======================== */
 loadAll();
 </script>
 </body>
