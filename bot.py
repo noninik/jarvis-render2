@@ -8,7 +8,7 @@ import subprocess
 import asyncio
 import urllib.parse
 import uuid
-from datetime import datetime
+from datetime import datetime, date
 from pathlib import Path
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -20,40 +20,27 @@ RENDER_URL = os.getenv("RENDER_URL", "")
 app = Flask(__name__)
 user_data = {}
 
-# === ПАПКА ДЛЯ ДАННЫХ ===
 DATA_DIR = Path("data")
 DATA_DIR.mkdir(exist_ok=True)
 
 # === РЕЖИМЫ ===
 MODES = {
-    "helper": {"name": "💬 Помощник", "prompt": "Ты универсальный AI-помощник Jarvis. Отвечай кратко и по делу на русском. Конкретные ответы с примерами.", "emoji": "💬"},
-    "business": {"name": "📊 Бизнес-аналитик", "prompt": "Ты бизнес-аналитик Jarvis. Анализируй рынки, конкурентов, тренды. Структурированные ответы с цифрами. На русском.", "emoji": "📊"},
-    "content": {"name": "✍️ Контент-менеджер", "prompt": "Ты контент-менеджер Jarvis. Пишешь посты, статьи, рекламу. Живой дерзкий язык без воды. На русском.", "emoji": "✍️"},
-    "coder": {"name": "💻 Программист", "prompt": "Ты full-stack разработчик Jarvis. Пишешь чистый рабочий код на Python, JavaScript, HTML. Готовый код. На русском.", "emoji": "💻"},
-    "startup": {"name": "📋 Стартап-консультант", "prompt": "Ты стартап-консультант Jarvis. Бизнес-планы, идеи, unit-экономика. На русском.", "emoji": "📋"},
-    "research": {"name": "🔍 Исследователь", "prompt": "Ты исследователь рынка Jarvis. Анализируй ниши, тренды, спрос. Конкретные данные. На русском.", "emoji": "🔍"},
-    "automate": {"name": "🚀 Автоматизатор", "prompt": "Ты эксперт по автоматизации Jarvis. Скрипты, боты, парсеры. Готовый код на Python. На русском.", "emoji": "🚀"},
-    "copywriter": {"name": "📝 Копирайтер", "prompt": "Ты копирайтер Jarvis. Продающие тексты, лендинги, email-рассылки. Формулы AIDA, PAS. На русском.", "emoji": "📝"},
-    "coach": {"name": "🎯 Коуч", "prompt": "Ты лайф-коуч Jarvis. Помогаешь ставить цели, планировать, находить мотивацию. На русском.", "emoji": "🎯"},
-    "translator": {"name": "🌍 Переводчик", "prompt": "Ты переводчик Jarvis. Переводишь тексты на/с английского. Объясняешь нюансы. На русском.", "emoji": "🌍"},
+    "helper": {"name": "💬 Помощник", "prompt": "Ты универсальный AI-помощник Jarvis. Отвечай кратко и по делу на русском.", "emoji": "💬"},
+    "business": {"name": "📊 Бизнес-аналитик", "prompt": "Ты бизнес-аналитик Jarvis. Анализируй рынки, конкурентов, тренды. На русском.", "emoji": "📊"},
+    "content": {"name": "✍️ Контент-менеджер", "prompt": "Ты контент-менеджер Jarvis. Пишешь посты, статьи, рекламу. На русском.", "emoji": "✍️"},
+    "coder": {"name": "💻 Программист", "prompt": "Ты full-stack разработчик Jarvis. Пишешь чистый код. На русском.", "emoji": "💻"},
+    "startup": {"name": "📋 Стартап-консультант", "prompt": "Ты стартап-консультант Jarvis. Бизнес-планы, идеи. На русском.", "emoji": "📋"},
+    "research": {"name": "🔍 Исследователь", "prompt": "Ты исследователь рынка Jarvis. Анализируй ниши, тренды. На русском.", "emoji": "🔍"},
+    "automate": {"name": "🚀 Автоматизатор", "prompt": "Ты эксперт по автоматизации Jarvis. Скрипты, боты. На русском.", "emoji": "🚀"},
+    "copywriter": {"name": "📝 Копирайтер", "prompt": "Ты копирайтер Jarvis. Продающие тексты. На русском.", "emoji": "📝"},
+    "coach": {"name": "🎯 Коуч", "prompt": "Ты лайф-коуч Jarvis. Цели, мотивация. На русском.", "emoji": "🎯"},
+    "translator": {"name": "🌍 Переводчик", "prompt": "Ты переводчик Jarvis. Переводишь тексты. На русском.", "emoji": "🌍"},
 }
 
 DEFAULT_MODE = "helper"
 
 JARVIS_SYSTEM_PROMPT = """Ты — JARVIS 2.0, продвинутый командный центр для серийного предпринимателя.
-
-ТВОИ РОЛИ:
-1. РЫНОЧНЫЙ АНАЛИТИК — Анализируешь боли людей, ищешь прибыльные ниши, оцениваешь конкурентов
-2. СТРАТЕГ — Декомпозируешь идеи на спринты (недельные отрезки), создаёшь бизнес-планы
-3. МОТИВАТОР — Поддерживаешь пользователя, геймифицируешь процесс
-
-ПРАВИЛА:
-- Отвечай конкретно, без воды
-- Структура: проблема → решение → следующий шаг
-- Для ниш: потенциал, конкуренция, время до MVP, монетизация
-- Для планов: недельные спринты с чек-листами
-- Отвечай на русском
-- Используй эмодзи умеренно
+Отвечай конкретно, без воды, на русском. Используй эмодзи умеренно.
 
 ФОРМАТ БИЗНЕС-ОЦЕНКИ:
 📊 Ниша: [название]
@@ -62,25 +49,17 @@ JARVIS_SYSTEM_PROMPT = """Ты — JARVIS 2.0, продвинутый коман
 ⚡ Конкуренция: [низкая/средняя/высокая]
 🕐 MVP: [сколько]
 📈 TAM: [оценка]
-✅ Вердикт: [стоит/нет + почему]
-
-ФОРМАТ СПРИНТА:
-🏃 Спринт [N] — Неделя [N]
-Цель: [что сделать]
-□ Задача 1
-□ Задача 2
-□ Задача 3
-Критерий: [как понять что готово]"""
+✅ Вердикт: [стоит/нет + почему]"""
 
 TEMPLATES = {
     "biz_plan": {"name": "📋 Бизнес-план", "prompt": "Создай детальный бизнес-план. Спроси нишу и бюджет, потом создай план: идея, ЦА, конкуренты, MVP, монетизация, маркетинг, финансы, риски."},
-    "content_plan": {"name": "📅 Контент-план", "prompt": "Создай контент-план на 2 недели. Спроси нишу, дай план: дата, тема, формат, хештеги. 3 поста в день."},
-    "competitor": {"name": "🔍 Анализ конкурентов", "prompt": "Проведи анализ конкурентов. Спроси нишу, проанализируй 5 конкурентов: сильные и слабые стороны, цены, УТП."},
-    "resume": {"name": "📄 Резюме", "prompt": "Помоги составить резюме. Спроси должность и опыт, создай резюме: контакты, о себе, опыт, навыки, образование."},
-    "post_pack": {"name": "✍️ Пак постов", "prompt": "Создай 10 постов для соцсетей. Спроси нишу и тон, напиши 10 постов: продающий, развлекательный, экспертный, вовлекающий."},
-    "landing": {"name": "🌐 Текст лендинга", "prompt": "Напиши текст лендинга. Спроси продукт, создай: заголовок, проблемы, решение, преимущества, призыв к действию."},
-    "email_chain": {"name": "📧 Email-цепочка", "prompt": "Создай 5 писем для прогрева клиента. Спроси нишу, напиши: приветственное, полезное, кейс, оффер, дожим."},
-    "swot": {"name": "📊 SWOT-анализ", "prompt": "Проведи SWOT-анализ. Спроси бизнес, разбери: Strengths, Weaknesses, Opportunities, Threats."},
+    "content_plan": {"name": "📅 Контент-план", "prompt": "Создай контент-план на 2 недели. Спроси нишу, дай план: дата, тема, формат, хештеги."},
+    "competitor": {"name": "🔍 Анализ конкурентов", "prompt": "Проведи анализ конкурентов. Спроси нишу, проанализируй 5 конкурентов."},
+    "resume": {"name": "📄 Резюме", "prompt": "Помоги составить резюме. Спроси должность и опыт."},
+    "post_pack": {"name": "✍️ Пак постов", "prompt": "Создай 10 постов для соцсетей. Спроси нишу и тон."},
+    "landing": {"name": "🌐 Текст лендинга", "prompt": "Напиши текст лендинга. Спроси продукт."},
+    "email_chain": {"name": "📧 Email-цепочка", "prompt": "Создай 5 писем для прогрева клиента."},
+    "swot": {"name": "📊 SWOT-анализ", "prompt": "Проведи SWOT-анализ. Спроси бизнес."},
 }
 
 MODE_BUTTONS = {
@@ -97,9 +76,29 @@ TEMPLATE_BUTTONS = {
     "📧 Email-цепочка": "email_chain", "📊 SWOT-анализ": "swot",
 }
 
+# === ДОСТИЖЕНИЯ ===
+ACHIEVEMENTS = {
+    "first_chat": {"name": "Первый чат", "icon": "💬", "desc": "Отправь первое сообщение", "check": lambda p, s: s.get("total_messages", 0) >= 1},
+    "first_project": {"name": "Первый проект", "icon": "🚀", "desc": "Создай первый проект", "check": lambda p, s: s.get("total_projects", 0) >= 1},
+    "five_projects": {"name": "5 проектов", "icon": "📦", "desc": "Создай 5 проектов", "check": lambda p, s: s.get("total_projects", 0) >= 5},
+    "ten_projects": {"name": "10 проектов", "icon": "🏭", "desc": "Создай 10 проектов", "check": lambda p, s: s.get("total_projects", 0) >= 10},
+    "first_quest": {"name": "Первый квест", "icon": "⚔️", "desc": "Заверши первый квест", "check": lambda p, s: s.get("completed_quests", 0) >= 1},
+    "xp_100": {"name": "100 XP", "icon": "⚡", "desc": "Набери 100 XP", "check": lambda p, s: p.get("total_xp", 0) >= 100},
+    "xp_1000": {"name": "1000 XP", "icon": "🔥", "desc": "Набери 1000 XP", "check": lambda p, s: p.get("total_xp", 0) >= 1000},
+    "xp_5000": {"name": "5000 XP", "icon": "💎", "desc": "Набери 5000 XP", "check": lambda p, s: p.get("total_xp", 0) >= 5000},
+    "streak_3": {"name": "3 дня подряд", "icon": "🔥", "desc": "Будь активен 3 дня подряд", "check": lambda p, s: p.get("streak", 0) >= 3},
+    "streak_7": {"name": "Неделя огня", "icon": "🔥🔥", "desc": "7 дней подряд", "check": lambda p, s: p.get("streak", 0) >= 7},
+    "streak_30": {"name": "Месяц огня", "icon": "👑", "desc": "30 дней подряд", "check": lambda p, s: p.get("streak", 0) >= 30},
+    "first_revenue": {"name": "Первый $", "icon": "💰", "desc": "Заработай первый доллар", "check": lambda p, s: s.get("total_revenue", 0) > 0},
+    "revenue_1k": {"name": "$1K MRR", "icon": "💰💰", "desc": "Достигни $1000 дохода", "check": lambda p, s: s.get("total_revenue", 0) >= 1000},
+    "niche_analyst": {"name": "Аналитик", "icon": "🔍", "desc": "Проанализируй 5 ниш", "check": lambda p, s: s.get("niches_analyzed", 0) >= 5},
+    "level_5": {"name": "Уровень 5", "icon": "⭐", "desc": "Достигни 5 уровня", "check": lambda p, s: p.get("level", 1) >= 5},
+    "level_10": {"name": "Уровень 10", "icon": "🌟", "desc": "Достигни 10 уровня", "check": lambda p, s: p.get("level", 1) >= 10},
+}
+
 
 # ============================================================
-# УТИЛИТЫ JSON
+# JSON УТИЛИТЫ
 # ============================================================
 
 def read_json(filename, default=None):
@@ -121,7 +120,7 @@ def write_json(filename, data):
 
 
 # ============================================================
-# ГЕЙМИФИКАЦИЯ
+# ГЕЙМИФИКАЦИЯ — XP, УРОВНИ, STREAK, ДОСТИЖЕНИЯ
 # ============================================================
 
 def get_player():
@@ -129,20 +128,22 @@ def get_player():
         "level": 1,
         "xp": 0,
         "xp_to_next": 1000,
+        "total_xp": 0,
         "rank": "Новичок",
-        "total_projects": 0,
-        "completed_quests": 0,
-        "streak": 0
+        "streak": 0,
+        "last_active": "",
+        "unlocked": []
     })
 
 
 def add_xp(amount, reason=""):
-    ranks = [
-        "Новичок", "Стажёр", "Предприниматель", "Бизнесмен",
-        "Стратег", "Магнат", "Титан", "Легенда"
-    ]
+    ranks = ["Новичок", "Стажёр", "Предприниматель", "Бизнесмен",
+             "Стратег", "Магнат", "Титан", "Легенда"]
+
     player = get_player()
     player["xp"] += amount
+    player["total_xp"] = player.get("total_xp", 0) + amount
+
     leveled = False
     while player["xp"] >= player["xp_to_next"]:
         player["xp"] -= player["xp_to_next"]
@@ -151,8 +152,136 @@ def add_xp(amount, reason=""):
         rank_idx = min(player["level"] // 5, len(ranks) - 1)
         player["rank"] = ranks[rank_idx]
         leveled = True
+
+    # === STREAK ===
+    today = date.today().isoformat()
+    last = player.get("last_active", "")
+    if last == today:
+        pass  # уже считали
+    elif last == (date.today().replace(day=date.today().day)).isoformat():
+        pass
+    else:
+        try:
+            from datetime import timedelta
+            yesterday = (date.today() - timedelta(days=1)).isoformat()
+            if last == yesterday:
+                player["streak"] = player.get("streak", 0) + 1
+            elif last != today:
+                player["streak"] = 1
+        except:
+            player["streak"] = 1
+    player["last_active"] = today
+
+    # === ДОСТИЖЕНИЯ ===
+    stats = get_global_stats()
+    unlocked = player.get("unlocked", [])
+    new_achievements = []
+    for ach_id, ach in ACHIEVEMENTS.items():
+        if ach_id not in unlocked:
+            try:
+                if ach["check"](player, stats):
+                    unlocked.append(ach_id)
+                    new_achievements.append(ach)
+            except:
+                pass
+    player["unlocked"] = unlocked
+
     write_json("player.json", player)
-    return player, leveled
+    return player, leveled, new_achievements
+
+
+def get_global_stats():
+    """Собирает глобальную статистику для проверки достижений"""
+    projects = read_json("projects.json", {"projects": []})
+    quests = read_json("quests.json", {"quests": []})
+    player = read_json("player.json", {})
+    activity = read_json("activity.json", {"total_messages": 0, "niches_analyzed": 0})
+
+    return {
+        "total_projects": len(projects.get("projects", [])),
+        "total_revenue": sum(p.get("revenue", 0) for p in projects.get("projects", [])),
+        "completed_quests": len([q for q in quests.get("quests", []) if q.get("completed")]),
+        "total_messages": activity.get("total_messages", 0),
+        "niches_analyzed": activity.get("niches_analyzed", 0),
+    }
+
+
+def track_activity(action):
+    """Трекает активность для достижений"""
+    activity = read_json("activity.json", {"total_messages": 0, "niches_analyzed": 0})
+    if action == "message":
+        activity["total_messages"] = activity.get("total_messages", 0) + 1
+    elif action == "niche":
+        activity["niches_analyzed"] = activity.get("niches_analyzed", 0) + 1
+    write_json("activity.json", activity)
+
+
+# ============================================================
+# WEEKLY MISSION
+# ============================================================
+
+def get_weekly_mission():
+    mission = read_json("mission.json", {})
+    today = date.today()
+    # Если миссии нет или прошла неделя — генерим новую
+    if not mission or not mission.get("week_start"):
+        mission = generate_weekly_mission()
+    else:
+        try:
+            start = date.fromisoformat(mission["week_start"])
+            if (today - start).days >= 7:
+                mission = generate_weekly_mission()
+        except:
+            mission = generate_weekly_mission()
+    return mission
+
+
+def generate_weekly_mission():
+    projects = read_json("projects.json", {"projects": []})
+    player = get_player()
+    active = [p for p in projects.get("projects", []) if p.get("status") == "active"]
+
+    if not active:
+        mission_name = "Создай первый проект"
+        tasks = [
+            {"text": "Придумай идею для бизнеса", "done": False},
+            {"text": "Создай проект в JARVIS", "done": False},
+            {"text": "Проанализируй нишу", "done": False},
+            {"text": "Напиши описание продукта", "done": False},
+        ]
+    elif player.get("level", 1) < 3:
+        mission_name = "Запусти MVP"
+        tasks = [
+            {"text": "Определи ЦА", "done": False},
+            {"text": "Создай лендинг", "done": False},
+            {"text": "Настрой аналитику", "done": False},
+            {"text": "Получи первый отклик", "done": False},
+        ]
+    else:
+        mission_name = "Масштабируй бизнес"
+        tasks = [
+            {"text": "Проанализируй 3 новых ниши", "done": False},
+            {"text": "Запусти A/B тест", "done": False},
+            {"text": "Найди партнёра", "done": False},
+            {"text": "Увеличь конверсию на 10%", "done": False},
+        ]
+
+    today = date.today()
+    mission = {
+        "name": mission_name,
+        "tasks": tasks,
+        "xp_reward": 500,
+        "week_start": today.isoformat(),
+        "week_end": (today.replace(day=today.day) if today.day <= 24 else today).isoformat(),
+    }
+
+    # Считаем конец недели
+    from datetime import timedelta
+    end = today + timedelta(days=(6 - today.weekday()))
+    mission["week_end"] = end.isoformat()
+
+    write_json("mission.json", mission)
+    return mission
 
 
 # ============================================================
@@ -272,8 +401,7 @@ def generate_image(prompt):
         try:
             resp = requests.get(url, timeout=120, stream=True, allow_redirects=True,
                                 headers={"User-Agent": "Mozilla/5.0"})
-            content_type = resp.headers.get("content-type", "")
-            if resp.status_code == 200 and "image" in content_type:
+            if resp.status_code == 200 and "image" in resp.headers.get("content-type", ""):
                 with open(file_path, "wb") as f:
                     for chunk in resp.iter_content(4096):
                         if chunk:
@@ -284,14 +412,6 @@ def generate_image(prompt):
                     os.remove(file_path)
         except:
             continue
-    try:
-        resp = requests.get("https://picsum.photos/800/600", timeout=30, allow_redirects=True)
-        if resp.status_code == 200 and len(resp.content) > 5000:
-            with open(file_path, "wb") as f:
-                f.write(resp.content)
-            return file_path
-    except:
-        pass
     return None
 
 
@@ -311,8 +431,7 @@ def create_voice(text):
             try:
                 result = subprocess.run(
                     ["ffmpeg", "-y", "-i", mp3_path, "-c:a", "libopus", "-b:a", "64k", ogg_path],
-                    timeout=30, capture_output=True
-                )
+                    timeout=30, capture_output=True)
                 if result.returncode == 0 and os.path.exists(ogg_path) and os.path.getsize(ogg_path) > 100:
                     os.remove(mp3_path)
                     return ogg_path
@@ -339,7 +458,7 @@ def create_voice(text):
 
 
 # ============================================================
-# AI ВЫЗОВ (Groq)
+# AI ВЫЗОВ
 # ============================================================
 
 def call_ai(system_prompt, user_message, context):
@@ -363,6 +482,63 @@ def call_ai(system_prompt, user_message, context):
         return resp.json()["choices"][0]["message"]["content"]
     except:
         return "Ошибка соединения с AI."
+
+
+# ============================================================
+# АВТОГЕНЕРАЦИЯ КВЕСТОВ ПРИ СОЗДАНИИ ПРОЕКТА
+# ============================================================
+
+def auto_generate_quests(project):
+    """Генерирует квесты для нового проекта через AI"""
+    prompt = f"""Создай 3 квеста (задания) для проекта.
+
+Проект: {project['name']}
+Описание: {project.get('description', '')}
+Монетизация: {project.get('monetization', '')}
+
+Ответь СТРОГО в JSON формате, без лишнего текста:
+[
+  {{"name": "название квеста", "priority": "urgent", "tasks": ["задача 1", "задача 2", "задача 3"]}},
+  {{"name": "название квеста", "priority": "normal", "tasks": ["задача 1", "задача 2", "задача 3"]}},
+  {{"name": "название квеста", "priority": "normal", "tasks": ["задача 1", "задача 2", "задача 3"]}}
+]
+
+Первый квест — срочный (валидация идеи).
+Второй — создание MVP.
+Третий — первые продажи."""
+
+    answer = call_ai("Отвечай ТОЛЬКО JSON массивом. Без пояснений.", prompt, [])
+
+    try:
+        # Пробуем вытащить JSON
+        start = answer.find('[')
+        end = answer.rfind(']') + 1
+        if start >= 0 and end > start:
+            quest_data = json.loads(answer[start:end])
+        else:
+            return []
+
+        quests_file = read_json("quests.json", {"quests": []})
+        created = []
+        for q in quest_data:
+            tasks = [{"text": t, "done": False} for t in q.get("tasks", [])]
+            quest = {
+                "id": str(int(time.time() * 1000)) + str(len(created)),
+                "name": q.get("name", "Квест"),
+                "priority": q.get("priority", "normal"),
+                "xp_reward": 250 if q.get("priority") == "urgent" else 150,
+                "tasks": tasks,
+                "completed": False,
+                "project_id": project["id"],
+                "created_at": datetime.now().isoformat()
+            }
+            quests_file["quests"].append(quest)
+            created.append(quest)
+
+        write_json("quests.json", quests_file)
+        return created
+    except:
+        return []
 
 
 # ============================================================
@@ -395,9 +571,7 @@ def send_reply_kb(chat_id, reply_kb):
     try:
         resp = requests.post(
             "https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendMessage",
-            json={"chat_id": chat_id, "text": "⌨️", "reply_markup": reply_kb},
-            timeout=30
-        )
+            json={"chat_id": chat_id, "text": "⌨️", "reply_markup": reply_kb}, timeout=30)
         if resp.status_code == 200:
             msg_id = resp.json().get("result", {}).get("message_id")
             if msg_id:
@@ -434,14 +608,9 @@ def send_photo(chat_id, file_path, caption=""):
     try:
         if file_path and os.path.exists(file_path):
             with open(file_path, "rb") as f:
-                resp = requests.post(
-                    "https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendPhoto",
-                    data={"chat_id": chat_id, "caption": caption[:1000]},
-                    files={"photo": ("image.jpg", f, "image/jpeg")}, timeout=60
-                )
-                if resp.status_code == 200:
-                    return
-        send_msg(chat_id, "❌ Не удалось сгенерировать картинку.")
+                requests.post("https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendPhoto",
+                              data={"chat_id": chat_id, "caption": caption[:1000]},
+                              files={"photo": ("image.jpg", f, "image/jpeg")}, timeout=60)
     except:
         send_msg(chat_id, "❌ Ошибка отправки фото.")
     finally:
@@ -462,10 +631,8 @@ def send_voice(chat_id, file_path):
                 else:
                     requests.post("https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendAudio",
                                   data={"chat_id": chat_id, "title": "Озвучка"}, files={"audio": f}, timeout=30)
-        else:
-            send_msg(chat_id, "❌ Не удалось создать голосовое.")
     except:
-        send_msg(chat_id, "❌ Ошибка отправки голосового.")
+        send_msg(chat_id, "❌ Ошибка голосового.")
     finally:
         if file_path and os.path.exists(file_path):
             try:
@@ -544,7 +711,6 @@ def main_inline_kb():
         [{"text": "🚀 Автоматизация", "callback_data": "mode_automate"}, {"text": "📝 Копирайтинг", "callback_data": "mode_copywriter"}],
         [{"text": "🎯 Коуч", "callback_data": "mode_coach"}, {"text": "🌍 Переводчик", "callback_data": "mode_translator"}],
         [{"text": "📦 Шаблоны", "callback_data": "show_templates"}, {"text": "🛠 Инструменты", "callback_data": "show_tools"}],
-        [{"text": "📌 Избранное", "callback_data": "show_favs"}, {"text": "📝 Заметки", "callback_data": "show_notes"}],
     ]}
 
 
@@ -584,7 +750,7 @@ def after_inline_kb():
 
 
 # ============================================================
-# TELEGRAM CALLBACK HANDLER
+# TELEGRAM CALLBACK
 # ============================================================
 
 def handle_callback(cb):
@@ -608,7 +774,6 @@ def handle_callback(cb):
     elif data == "show_templates":
         answer_cb(cb_id)
         edit_msg(chat_id, old_msg_id, "📦 Шаблоны:", tpl_inline_kb())
-        send_reply_kb(chat_id, templates_reply_kb())
 
     elif data.startswith("tpl_"):
         key = data[4:]
@@ -625,130 +790,87 @@ def handle_callback(cb):
     elif data == "show_tools":
         answer_cb(cb_id)
         edit_msg(chat_id, old_msg_id, "🛠 Инструменты:", tools_inline_kb())
-        send_reply_kb(chat_id, tools_reply_kb())
 
     elif data == "tool_search":
-        answer_cb(cb_id)
-        delete_msg(chat_id, old_msg_id)
-        set_user(chat_id, "waiting", "search")
-        send_msg(chat_id, "🔍 Напиши запрос:")
-
+        answer_cb(cb_id); delete_msg(chat_id, old_msg_id)
+        set_user(chat_id, "waiting", "search"); send_msg(chat_id, "🔍 Напиши запрос:")
     elif data == "tool_parse":
-        answer_cb(cb_id)
-        delete_msg(chat_id, old_msg_id)
-        set_user(chat_id, "waiting", "parse")
-        send_msg(chat_id, "🌐 Отправь ссылку:")
-
+        answer_cb(cb_id); delete_msg(chat_id, old_msg_id)
+        set_user(chat_id, "waiting", "parse"); send_msg(chat_id, "🌐 Отправь ссылку:")
     elif data == "tool_image":
-        answer_cb(cb_id)
-        delete_msg(chat_id, old_msg_id)
-        set_user(chat_id, "waiting", "image")
-        send_msg(chat_id, "🖼 Опиши что нарисовать:")
-
+        answer_cb(cb_id); delete_msg(chat_id, old_msg_id)
+        set_user(chat_id, "waiting", "image"); send_msg(chat_id, "🖼 Опиши что нарисовать:")
     elif data == "tool_voice":
-        answer_cb(cb_id)
-        delete_msg(chat_id, old_msg_id)
-        set_user(chat_id, "waiting", "voice")
-        send_msg(chat_id, "🎙 Напиши текст:")
-
+        answer_cb(cb_id); delete_msg(chat_id, old_msg_id)
+        set_user(chat_id, "waiting", "voice"); send_msg(chat_id, "🎙 Напиши текст:")
     elif data == "tool_summarize":
-        answer_cb(cb_id)
-        delete_msg(chat_id, old_msg_id)
-        set_user(chat_id, "waiting", "summarize")
-        send_msg(chat_id, "📝 Отправь текст:")
-
+        answer_cb(cb_id); delete_msg(chat_id, old_msg_id)
+        set_user(chat_id, "waiting", "summarize"); send_msg(chat_id, "📝 Отправь текст:")
     elif data == "tool_enru":
-        answer_cb(cb_id)
-        delete_msg(chat_id, old_msg_id)
-        set_user(chat_id, "waiting", "enru")
-        send_msg(chat_id, "🇬🇧→🇷🇺 Текст:")
-
+        answer_cb(cb_id); delete_msg(chat_id, old_msg_id)
+        set_user(chat_id, "waiting", "enru"); send_msg(chat_id, "🇬🇧→🇷🇺 Текст:")
     elif data == "tool_ruen":
-        answer_cb(cb_id)
-        delete_msg(chat_id, old_msg_id)
-        set_user(chat_id, "waiting", "ruen")
-        send_msg(chat_id, "🇷🇺→🇬🇧 Текст:")
+        answer_cb(cb_id); delete_msg(chat_id, old_msg_id)
+        set_user(chat_id, "waiting", "ruen"); send_msg(chat_id, "🇷🇺→🇬🇧 Текст:")
 
     elif data == "tool_clear":
         answer_cb(cb_id, "Очищено!")
         set_user(chat_id, "context", [])
         edit_msg(chat_id, old_msg_id, "🗑 Очищено!", main_inline_kb())
-        send_reply_kb(chat_id, main_reply_kb())
 
     elif data == "act_more":
-        answer_cb(cb_id)
-        delete_msg(chat_id, old_msg_id)
-        send_typing(chat_id)
-        answer = call_ai(get_mode_prompt(chat_id), "Подробнее. Деталей, цифр, примеров.", get_context(chat_id))
-        add_context(chat_id, "user", "Подробнее")
-        add_context(chat_id, "assistant", answer)
+        answer_cb(cb_id); delete_msg(chat_id, old_msg_id); send_typing(chat_id)
+        answer = call_ai(get_mode_prompt(chat_id), "Подробнее. Больше деталей и примеров.", get_context(chat_id))
+        add_context(chat_id, "user", "Подробнее"); add_context(chat_id, "assistant", answer)
         send_msg(chat_id, answer, inline_kb=after_inline_kb())
 
     elif data == "act_rewrite":
-        answer_cb(cb_id)
-        delete_msg(chat_id, old_msg_id)
-        send_typing(chat_id)
+        answer_cb(cb_id); delete_msg(chat_id, old_msg_id); send_typing(chat_id)
         answer = call_ai(get_mode_prompt(chat_id), "Перепиши лучше.", get_context(chat_id))
-        add_context(chat_id, "user", "Переписать")
-        add_context(chat_id, "assistant", answer)
+        add_context(chat_id, "user", "Переписать"); add_context(chat_id, "assistant", answer)
         send_msg(chat_id, answer, inline_kb=after_inline_kb())
 
     elif data == "act_list":
-        answer_cb(cb_id)
-        delete_msg(chat_id, old_msg_id)
-        send_typing(chat_id)
+        answer_cb(cb_id); delete_msg(chat_id, old_msg_id); send_typing(chat_id)
         answer = call_ai(get_mode_prompt(chat_id), "Оформи списком.", get_context(chat_id))
-        add_context(chat_id, "user", "Списком")
-        add_context(chat_id, "assistant", answer)
+        add_context(chat_id, "user", "Списком"); add_context(chat_id, "assistant", answer)
         send_msg(chat_id, answer, inline_kb=after_inline_kb())
 
     elif data == "act_example":
-        answer_cb(cb_id)
-        delete_msg(chat_id, old_msg_id)
-        send_typing(chat_id)
+        answer_cb(cb_id); delete_msg(chat_id, old_msg_id); send_typing(chat_id)
         answer = call_ai(get_mode_prompt(chat_id), "Пример с цифрами.", get_context(chat_id))
-        add_context(chat_id, "user", "Пример")
-        add_context(chat_id, "assistant", answer)
+        add_context(chat_id, "user", "Пример"); add_context(chat_id, "assistant", answer)
         send_msg(chat_id, answer, inline_kb=after_inline_kb())
 
     elif data == "act_image":
-        answer_cb(cb_id)
-        delete_msg(chat_id, old_msg_id)
-        send_typing(chat_id)
-        prompt = call_ai("Отвечай ТОЛЬКО промтом без кавычек.",
-                         "Короткий промт на английском для картинки по теме последнего сообщения. Максимум 10 слов.",
-                         get_context(chat_id))
-        prompt = prompt.strip().strip('"').strip("'").strip("`")[:200]
-        send_msg(chat_id, f"🎨 Генерирую: {prompt}\n⏳ Подожди...")
+        answer_cb(cb_id); delete_msg(chat_id, old_msg_id); send_typing(chat_id)
+        prompt = call_ai("Отвечай ТОЛЬКО промтом.", "Короткий промт на английском для картинки. 10 слов макс.", get_context(chat_id))
+        prompt = prompt.strip().strip('"\'`')[:200]
+        send_msg(chat_id, f"🎨 {prompt}\n⏳ Подожди...")
         img_path = generate_image(prompt)
         send_photo(chat_id, img_path, "🖼 " + prompt)
 
     elif data == "act_voice":
-        answer_cb(cb_id)
-        delete_msg(chat_id, old_msg_id)
-        send_typing(chat_id)
+        answer_cb(cb_id); delete_msg(chat_id, old_msg_id); send_typing(chat_id)
         ctx = get_context(chat_id)
         if not ctx:
-            send_msg(chat_id, "❌ Нечего озвучивать.")
-            return
-        send_msg(chat_id, "🎙 Создаю голосовое...")
+            send_msg(chat_id, "❌ Нечего озвучивать."); return
+        send_msg(chat_id, "🎙 Создаю...")
         voice_path = create_voice(ctx[-1]["text"][:500])
         if voice_path:
             send_voice(chat_id, voice_path)
         else:
-            send_msg(chat_id, "❌ Не удалось создать голосовое.")
+            send_msg(chat_id, "❌ Ошибка озвучки.")
 
     elif data == "act_fav":
         answer_cb(cb_id, "📌 Добавлено!")
         ctx = get_context(chat_id)
-        if ctx:
-            add_favorite(chat_id, ctx[-1]["text"])
+        if ctx: add_favorite(chat_id, ctx[-1]["text"])
 
     elif data == "act_note":
         answer_cb(cb_id, "📝 Сохранено!")
         ctx = get_context(chat_id)
-        if ctx:
-            add_note(chat_id, ctx[-1]["text"])
+        if ctx: add_note(chat_id, ctx[-1]["text"])
 
     elif data == "show_favs":
         answer_cb(cb_id)
@@ -770,18 +892,16 @@ def handle_callback(cb):
                 t += f"{i}. [{n['date']}]\n{n['text'][:200]}\n\n"
             edit_msg(chat_id, old_msg_id, t, main_inline_kb())
         else:
-            edit_msg(chat_id, old_msg_id, "📝 Пусто. /note текст", main_inline_kb())
+            edit_msg(chat_id, old_msg_id, "📝 Пусто.", main_inline_kb())
 
     elif data == "back_main":
         answer_cb(cb_id)
         mode = get_user(chat_id, "mode", DEFAULT_MODE)
-        edit_msg(chat_id, old_msg_id, "🤖 Jarvis 2.0 | " + MODES.get(mode, MODES[DEFAULT_MODE])["name"],
-                 main_inline_kb())
-        send_reply_kb(chat_id, main_reply_kb())
+        edit_msg(chat_id, old_msg_id, "🤖 Jarvis 2.0 | " + MODES.get(mode, MODES[DEFAULT_MODE])["name"], main_inline_kb())
 
 
 # ============================================================
-# TELEGRAM MESSAGE HANDLER
+# TELEGRAM MESSAGE
 # ============================================================
 
 def handle_message(chat_id, text):
@@ -793,17 +913,22 @@ def handle_message(chat_id, text):
         return
 
     if text.startswith("/note "):
-        note_text = text[6:].strip()
-        if note_text:
-            add_note(chat_id, note_text)
-            send_msg(chat_id, "📝 Сохранено!")
+        add_note(chat_id, text[6:].strip())
+        send_msg(chat_id, "📝 Сохранено!")
         return
 
     if text in ["/stats", "📊 Статистика"]:
         stats = get_stats(chat_id)
-        msg = f"📊 Статистика:\n\nСообщений: {stats.get('messages', 0)}\n\nРежимы:\n"
-        for m, count in stats.get("modes", {}).items():
-            msg += f"  {MODES.get(m, {'name': m})['name']}: {count}\n"
+        player = get_player()
+        msg = f"📊 Статистика:\n\n"
+        msg += f"⚡ Уровень: {player['level']} ({player['rank']})\n"
+        msg += f"✨ XP: {player['xp']}/{player['xp_to_next']}\n"
+        msg += f"🔥 Streak: {player.get('streak', 0)} дней\n"
+        msg += f"💬 Сообщений: {stats.get('messages', 0)}\n\n"
+        msg += f"🏆 Достижения: {len(player.get('unlocked', []))}/{len(ACHIEVEMENTS)}\n"
+        for ach_id in player.get("unlocked", []):
+            if ach_id in ACHIEVEMENTS:
+                msg += f"  {ACHIEVEMENTS[ach_id]['icon']} {ACHIEVEMENTS[ach_id]['name']}\n"
         send_msg(chat_id, msg)
         return
 
@@ -823,8 +948,7 @@ def handle_message(chat_id, text):
 
     if text in TEMPLATE_BUTTONS:
         key = TEMPLATE_BUTTONS[text]
-        send_typing(chat_id)
-        update_stats(chat_id)
+        send_typing(chat_id); update_stats(chat_id)
         answer = call_ai(get_mode_prompt(chat_id), TEMPLATES[key]["prompt"], get_context(chat_id))
         add_context(chat_id, "user", TEMPLATES[key]["prompt"])
         add_context(chat_id, "assistant", answer)
@@ -835,20 +959,14 @@ def handle_message(chat_id, text):
         send_msg(chat_id, "🛠 Инструменты:", reply_kb=tools_reply_kb(), inline_kb=tools_inline_kb())
         return
 
-    if text == "🔍 Поиск":
-        set_user(chat_id, "waiting", "search"); send_msg(chat_id, "🔍 Запрос:"); return
-    if text == "🌐 Парсинг сайта":
-        set_user(chat_id, "waiting", "parse"); send_msg(chat_id, "🌐 Ссылка:"); return
-    if text == "🖼 Генерация фото":
-        set_user(chat_id, "waiting", "image"); send_msg(chat_id, "🖼 Опиши:"); return
-    if text == "🎙 Озвучка текста":
-        set_user(chat_id, "waiting", "voice"); send_msg(chat_id, "🎙 Текст:"); return
-    if text == "📝 Суммаризация":
-        set_user(chat_id, "waiting", "summarize"); send_msg(chat_id, "📝 Текст:"); return
-    if text == "🇬🇧→🇷🇺 Перевод EN-RU":
-        set_user(chat_id, "waiting", "enru"); send_msg(chat_id, "🇬🇧→🇷🇺 Текст:"); return
-    if text == "🇷🇺→🇬🇧 Перевод RU-EN":
-        set_user(chat_id, "waiting", "ruen"); send_msg(chat_id, "🇷🇺→🇬🇧 Текст:"); return
+    if text == "🔍 Поиск": set_user(chat_id, "waiting", "search"); send_msg(chat_id, "🔍 Запрос:"); return
+    if text == "🌐 Парсинг сайта": set_user(chat_id, "waiting", "parse"); send_msg(chat_id, "🌐 Ссылка:"); return
+    if text == "🖼 Генерация фото": set_user(chat_id, "waiting", "image"); send_msg(chat_id, "🖼 Опиши:"); return
+    if text == "🎙 Озвучка текста": set_user(chat_id, "waiting", "voice"); send_msg(chat_id, "🎙 Текст:"); return
+    if text == "📝 Суммаризация": set_user(chat_id, "waiting", "summarize"); send_msg(chat_id, "📝 Текст:"); return
+    if text == "🇬🇧→🇷🇺 Перевод EN-RU": set_user(chat_id, "waiting", "enru"); send_msg(chat_id, "🇬🇧→🇷🇺 Текст:"); return
+    if text == "🇷🇺→🇬🇧 Перевод RU-EN": set_user(chat_id, "waiting", "ruen"); send_msg(chat_id, "🇷🇺→🇬🇧 Текст:"); return
+
     if text == "🗑 Очистить контекст":
         set_user(chat_id, "context", [])
         send_msg(chat_id, "🗑 Очищено!", reply_kb=main_reply_kb())
@@ -860,10 +978,9 @@ def handle_message(chat_id, text):
             msg = "📌 Избранное:\n\n"
             for i, f in enumerate(favs[-10:], 1):
                 msg += f"{i}. [{f['date']}]\n{f['text'][:200]}\n\n"
-            send_msg(chat_id, msg)
         else:
-            send_msg(chat_id, "📌 Пусто.")
-        return
+            msg = "📌 Пусто."
+        send_msg(chat_id, msg); return
 
     if text == "📝 Заметки":
         notes = get_notes(chat_id)
@@ -871,170 +988,109 @@ def handle_message(chat_id, text):
             msg = "📝 Заметки:\n\n"
             for i, n in enumerate(notes[-10:], 1):
                 msg += f"{i}. [{n['date']}]\n{n['text'][:200]}\n\n"
-            send_msg(chat_id, msg)
         else:
-            send_msg(chat_id, "📝 Пусто. /note текст")
-        return
+            msg = "📝 Пусто. /note текст"
+        send_msg(chat_id, msg); return
 
-    if text == "🔄 Подробнее":
+    # Quick actions
+    quick = {
+        "🔄 Подробнее": "Подробнее. Больше деталей.",
+        "✏️ Переписать": "Перепиши лучше.",
+        "📋 Список": "Оформи списком.",
+        "🎯 Пример": "Пример с цифрами.",
+    }
+    if text in quick:
         send_typing(chat_id)
-        answer = call_ai(get_mode_prompt(chat_id), "Подробнее.", get_context(chat_id))
-        add_context(chat_id, "user", "Подробнее")
-        add_context(chat_id, "assistant", answer)
-        send_msg(chat_id, answer, inline_kb=after_inline_kb())
-        return
-
-    if text == "✏️ Переписать":
-        send_typing(chat_id)
-        answer = call_ai(get_mode_prompt(chat_id), "Перепиши лучше.", get_context(chat_id))
-        add_context(chat_id, "user", "Переписать")
-        add_context(chat_id, "assistant", answer)
-        send_msg(chat_id, answer, inline_kb=after_inline_kb())
-        return
-
-    if text == "📋 Список":
-        send_typing(chat_id)
-        answer = call_ai(get_mode_prompt(chat_id), "Оформи списком.", get_context(chat_id))
-        add_context(chat_id, "user", "Списком")
-        add_context(chat_id, "assistant", answer)
-        send_msg(chat_id, answer, inline_kb=after_inline_kb())
-        return
-
-    if text == "🎯 Пример":
-        send_typing(chat_id)
-        answer = call_ai(get_mode_prompt(chat_id), "Пример с цифрами.", get_context(chat_id))
-        add_context(chat_id, "user", "Пример")
-        add_context(chat_id, "assistant", answer)
-        send_msg(chat_id, answer, inline_kb=after_inline_kb())
-        return
+        answer = call_ai(get_mode_prompt(chat_id), quick[text], get_context(chat_id))
+        add_context(chat_id, "user", text); add_context(chat_id, "assistant", answer)
+        send_msg(chat_id, answer, inline_kb=after_inline_kb()); return
 
     if text == "🖼 Нарисовать":
         send_typing(chat_id)
-        prompt = call_ai("Отвечай ТОЛЬКО промтом.", "Короткий промт на английском для картинки. 10 слов макс.",
-                         get_context(chat_id))
-        prompt = prompt.strip().strip('"').strip("'").strip("`")[:200]
+        prompt = call_ai("Отвечай ТОЛЬКО промтом.", "Короткий промт на английском для картинки. 10 слов макс.", get_context(chat_id))
+        prompt = prompt.strip().strip('"\'`')[:200]
         send_msg(chat_id, f"🎨 {prompt}\n⏳ Подожди...")
-        img_path = generate_image(prompt)
-        send_photo(chat_id, img_path, "🖼 " + prompt)
-        return
+        send_photo(chat_id, generate_image(prompt), "🖼 " + prompt); return
 
     if text == "🎙 Озвучить":
         send_typing(chat_id)
         ctx = get_context(chat_id)
-        if not ctx:
-            send_msg(chat_id, "❌ Нечего озвучивать."); return
+        if not ctx: send_msg(chat_id, "❌ Нечего озвучивать."); return
         send_msg(chat_id, "🎙 Создаю...")
-        voice_path = create_voice(ctx[-1]["text"][:500])
-        if voice_path:
-            send_voice(chat_id, voice_path)
-        else:
-            send_msg(chat_id, "❌ Ошибка озвучки.")
+        vp = create_voice(ctx[-1]["text"][:500])
+        if vp: send_voice(chat_id, vp)
+        else: send_msg(chat_id, "❌ Ошибка озвучки.")
         return
 
     if text == "📌 В избранное":
         ctx = get_context(chat_id)
-        if ctx:
-            add_favorite(chat_id, ctx[-1]["text"]); send_msg(chat_id, "📌 Добавлено!")
-        else:
-            send_msg(chat_id, "❌ Пусто.")
+        if ctx: add_favorite(chat_id, ctx[-1]["text"]); send_msg(chat_id, "📌 Добавлено!")
+        else: send_msg(chat_id, "❌ Пусто.")
         return
 
     if text == "📝 В заметки":
         ctx = get_context(chat_id)
-        if ctx:
-            add_note(chat_id, ctx[-1]["text"]); send_msg(chat_id, "📝 Сохранено!")
-        else:
-            send_msg(chat_id, "❌ Пусто.")
+        if ctx: add_note(chat_id, ctx[-1]["text"]); send_msg(chat_id, "📝 Сохранено!")
+        else: send_msg(chat_id, "❌ Пусто.")
         return
 
-    # === WAITING STATES ===
+    # Waiting states
     waiting = get_user(chat_id, "waiting", "")
 
     if waiting == "search":
-        set_user(chat_id, "waiting", "")
-        send_typing(chat_id)
-        update_stats(chat_id)
+        set_user(chat_id, "waiting", ""); send_typing(chat_id); update_stats(chat_id)
         results = search_web(text)
-        answer = call_ai(get_mode_prompt(chat_id),
-                         "Поиск '" + text + "':\n\n" + results + "\n\nАнализ.", get_context(chat_id))
-        add_context(chat_id, "user", "Поиск: " + text)
-        add_context(chat_id, "assistant", answer)
-        send_msg(chat_id, "🔍 " + text + "\n\n" + answer, reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
-        return
+        answer = call_ai(get_mode_prompt(chat_id), f"Поиск '{text}':\n\n{results}\n\nАнализ.", get_context(chat_id))
+        add_context(chat_id, "user", "Поиск: " + text); add_context(chat_id, "assistant", answer)
+        send_msg(chat_id, "🔍 " + text + "\n\n" + answer, reply_kb=after_reply_kb(), inline_kb=after_inline_kb()); return
 
     if waiting == "parse":
-        set_user(chat_id, "waiting", "")
-        send_typing(chat_id)
-        update_stats(chat_id)
+        set_user(chat_id, "waiting", ""); send_typing(chat_id); update_stats(chat_id)
         content = parse_website(text)
-        answer = call_ai(get_mode_prompt(chat_id),
-                         "Сайт " + text + ":\n\n" + content + "\n\nАнализ.", get_context(chat_id))
-        add_context(chat_id, "user", "Парсинг: " + text)
-        add_context(chat_id, "assistant", answer)
-        send_msg(chat_id, "🌐\n\n" + answer, reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
-        return
+        answer = call_ai(get_mode_prompt(chat_id), f"Сайт {text}:\n\n{content}\n\nАнализ.", get_context(chat_id))
+        add_context(chat_id, "user", "Парсинг: " + text); add_context(chat_id, "assistant", answer)
+        send_msg(chat_id, "🌐\n\n" + answer, reply_kb=after_reply_kb(), inline_kb=after_inline_kb()); return
 
     if waiting == "image":
-        set_user(chat_id, "waiting", "")
-        send_typing(chat_id)
+        set_user(chat_id, "waiting", ""); send_typing(chat_id)
         send_msg(chat_id, f"🎨 {text}\n⏳ Подожди...")
-        img_path = generate_image(text)
-        send_photo(chat_id, img_path, "🖼 " + text[:200])
-        return
+        send_photo(chat_id, generate_image(text), "🖼 " + text[:200]); return
 
     if waiting == "voice":
-        set_user(chat_id, "waiting", "")
-        send_typing(chat_id)
+        set_user(chat_id, "waiting", ""); send_typing(chat_id)
         send_msg(chat_id, "🎙 Создаю...")
-        voice_path = create_voice(text[:500])
-        if voice_path:
-            send_voice(chat_id, voice_path)
-        else:
-            send_msg(chat_id, "❌ Ошибка озвучки.")
+        vp = create_voice(text[:500])
+        if vp: send_voice(chat_id, vp)
+        else: send_msg(chat_id, "❌ Ошибка озвучки.")
         return
 
     if waiting == "summarize":
-        set_user(chat_id, "waiting", "")
-        send_typing(chat_id)
-        update_stats(chat_id)
+        set_user(chat_id, "waiting", ""); send_typing(chat_id); update_stats(chat_id)
         answer = call_ai("Суммаризатор.", "5 мыслей:\n\n" + text[:3000], [])
-        add_context(chat_id, "user", "Суммаризация")
-        add_context(chat_id, "assistant", answer)
-        send_msg(chat_id, "📝\n\n" + answer, reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
-        return
+        add_context(chat_id, "user", "Суммаризация"); add_context(chat_id, "assistant", answer)
+        send_msg(chat_id, "📝\n\n" + answer, reply_kb=after_reply_kb(), inline_kb=after_inline_kb()); return
 
     if waiting == "enru":
-        set_user(chat_id, "waiting", "")
-        send_typing(chat_id)
+        set_user(chat_id, "waiting", ""); send_typing(chat_id)
         answer = call_ai("Переводчик.", "На русский:\n\n" + text, [])
-        send_msg(chat_id, "🇬🇧→🇷🇺\n\n" + answer, reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
-        return
+        send_msg(chat_id, "🇬🇧→🇷🇺\n\n" + answer, reply_kb=after_reply_kb(), inline_kb=after_inline_kb()); return
 
     if waiting == "ruen":
-        set_user(chat_id, "waiting", "")
-        send_typing(chat_id)
+        set_user(chat_id, "waiting", ""); send_typing(chat_id)
         answer = call_ai("Переводчик.", "На английский:\n\n" + text, [])
-        send_msg(chat_id, "🇷🇺→🇬🇧\n\n" + answer, reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
-        return
+        send_msg(chat_id, "🇷🇺→🇬🇧\n\n" + answer, reply_kb=after_reply_kb(), inline_kb=after_inline_kb()); return
 
-    if waiting == "newnote":
-        set_user(chat_id, "waiting", "")
-        add_note(chat_id, text)
-        send_msg(chat_id, "📝 Сохранено!")
-        return
-
-    # === DEFAULT: AI CHAT ===
-    send_typing(chat_id)
-    update_stats(chat_id)
+    # Default AI
+    send_typing(chat_id); update_stats(chat_id)
+    track_activity("message")
     answer = call_ai(get_mode_prompt(chat_id), text, get_context(chat_id))
-    add_context(chat_id, "user", text)
-    add_context(chat_id, "assistant", answer)
+    add_context(chat_id, "user", text); add_context(chat_id, "assistant", answer)
     add_xp(25, f"Чат: {text[:50]}")
     send_msg(chat_id, answer, reply_kb=after_reply_kb(), inline_kb=after_inline_kb())
 
 
 # ============================================================
-# FLASK ROUTES — TELEGRAM WEBHOOK
+# FLASK — TELEGRAM WEBHOOK
 # ============================================================
 
 @app.route("/webhook", methods=["POST"])
@@ -1064,7 +1120,7 @@ def home():
 
 
 # ============================================================
-# WEB API — ЧАТ, ПРОЕКТЫ, КВЕСТЫ, ГЕЙМИФИКАЦИЯ
+# WEB API
 # ============================================================
 
 web_sessions = {}
@@ -1090,8 +1146,7 @@ def api_send():
         return json.dumps({"error": "empty"}), 400, {"Content-Type": "application/json"}
 
     session = get_web_session(sid)
-    mode = session["mode"]
-    prompt = MODES.get(mode, MODES["helper"])["prompt"]
+    prompt = MODES.get(session["mode"], MODES["helper"])["prompt"]
 
     session["context"].append({"role": "user", "text": text[:1000]})
     if len(session["context"]) > 20:
@@ -1103,6 +1158,7 @@ def api_send():
     if len(session["context"]) > 20:
         session["context"] = session["context"][-20:]
 
+    track_activity("message")
     add_xp(25, f"Web: {text[:50]}")
 
     return json.dumps({"answer": answer, "time": time.strftime("%H:%M")}, ensure_ascii=False), 200, {
@@ -1136,14 +1192,14 @@ def api_clear():
 
 @app.route("/api/projects", methods=["GET"])
 def get_projects():
-    data = read_json("projects.json", {"projects": []})
-    return json.dumps(data, ensure_ascii=False), 200, {"Content-Type": "application/json"}
+    return json.dumps(read_json("projects.json", {"projects": []}), ensure_ascii=False), 200, {
+        "Content-Type": "application/json"}
 
 
 @app.route("/api/projects", methods=["POST"])
 def create_project():
-    data = read_json("projects.json", {"projects": []})
     req = request.get_json()
+    data = read_json("projects.json", {"projects": []})
     new_project = {
         "id": str(int(time.time() * 1000)),
         "name": req.get("name", "Без названия"),
@@ -1152,11 +1208,16 @@ def create_project():
         "status": "active",
         "sprint": 1,
         "revenue": 0,
+        "links": [],
         "created_at": datetime.now().isoformat()
     }
     data["projects"].append(new_project)
     write_json("projects.json", data)
     add_xp(100, f"Новый проект: {new_project['name']}")
+
+    # Автогенерация квестов
+    threading.Thread(target=auto_generate_quests, args=(new_project,), daemon=True).start()
+
     return json.dumps(new_project, ensure_ascii=False), 200, {"Content-Type": "application/json"}
 
 
@@ -1175,9 +1236,49 @@ def update_project(project_id):
 @app.route("/api/projects/<project_id>", methods=["DELETE"])
 def delete_project(project_id):
     data = read_json("projects.json", {"projects": []})
-    data["projects"] = [p for p in data["projects"] if p["id"] != project_id]
-    write_json("projects.json", data)
-    return json.dumps({"ok": True}), 200, {"Content-Type": "application/json"}
+    # Архивируем вместо удаления
+    for i, p in enumerate(data["projects"]):
+        if p["id"] == project_id:
+            data["projects"][i]["status"] = "archived"
+            write_json("projects.json", data)
+            return json.dumps({"ok": True, "archived": True}), 200, {"Content-Type": "application/json"}
+    return json.dumps({"error": "Не найден"}), 404, {"Content-Type": "application/json"}
+
+
+# === ДОБАВИТЬ ДОХОД ===
+
+@app.route("/api/projects/<project_id>/revenue", methods=["POST"])
+def add_revenue(project_id):
+    data = read_json("projects.json", {"projects": []})
+    req = request.get_json()
+    amount = req.get("amount", 0)
+    for i, p in enumerate(data["projects"]):
+        if p["id"] == project_id:
+            data["projects"][i]["revenue"] = data["projects"][i].get("revenue", 0) + amount
+            write_json("projects.json", data)
+            add_xp(50, f"Доход +${amount}")
+            return json.dumps(data["projects"][i], ensure_ascii=False), 200, {"Content-Type": "application/json"}
+    return json.dumps({"error": "Не найден"}), 404, {"Content-Type": "application/json"}
+
+
+# === ДОБАВИТЬ ССЫЛКУ К ПРОЕКТУ ===
+
+@app.route("/api/projects/<project_id>/links", methods=["POST"])
+def add_link(project_id):
+    data = read_json("projects.json", {"projects": []})
+    req = request.get_json()
+    for i, p in enumerate(data["projects"]):
+        if p["id"] == project_id:
+            links = data["projects"][i].get("links", [])
+            links.append({
+                "url": req.get("url", ""),
+                "title": req.get("title", ""),
+                "added": datetime.now().isoformat()
+            })
+            data["projects"][i]["links"] = links
+            write_json("projects.json", data)
+            return json.dumps(data["projects"][i], ensure_ascii=False), 200, {"Content-Type": "application/json"}
+    return json.dumps({"error": "Не найден"}), 404, {"Content-Type": "application/json"}
 
 
 # === КВЕСТЫ ===
@@ -1192,13 +1293,15 @@ def get_quests():
 def create_quest():
     data = read_json("quests.json", {"quests": []})
     req = request.get_json()
+    tasks = [{"text": t, "done": False} if isinstance(t, str) else t for t in req.get("tasks", [])]
     quest = {
         "id": str(int(time.time() * 1000)),
         "name": req.get("name", ""),
         "priority": req.get("priority", "normal"),
         "xp_reward": req.get("xp_reward", 100),
-        "tasks": req.get("tasks", []),
+        "tasks": tasks,
         "completed": False,
+        "project_id": req.get("project_id", ""),
         "created_at": datetime.now().isoformat()
     }
     data["quests"].append(quest)
@@ -1213,7 +1316,7 @@ def update_quest(quest_id):
     for i, q in enumerate(data["quests"]):
         if q["id"] == quest_id:
             data["quests"][i].update(req)
-            if req.get("completed"):
+            if req.get("completed") and not q.get("completed"):
                 add_xp(q.get("xp_reward", 100), f"Квест: {q['name']}")
             write_json("quests.json", data)
             return json.dumps(data["quests"][i], ensure_ascii=False), 200, {"Content-Type": "application/json"}
@@ -1230,11 +1333,49 @@ def get_player_route():
 @app.route("/api/player/add-xp", methods=["POST"])
 def add_xp_route():
     req = request.get_json()
-    amount = req.get("amount", 0)
-    reason = req.get("reason", "")
-    player, leveled = add_xp(amount, reason)
-    return json.dumps({"player": player, "leveled": leveled}, ensure_ascii=False), 200, {
-        "Content-Type": "application/json"}
+    player, leveled, new_ach = add_xp(req.get("amount", 0), req.get("reason", ""))
+    return json.dumps({"player": player, "leveled": leveled, "new_achievements": [a["name"] for a in new_ach]},
+                      ensure_ascii=False), 200, {"Content-Type": "application/json"}
+
+
+# === ДОСТИЖЕНИЯ ===
+
+@app.route("/api/achievements", methods=["GET"])
+def get_achievements():
+    player = get_player()
+    unlocked = player.get("unlocked", [])
+    result = []
+    for ach_id, ach in ACHIEVEMENTS.items():
+        result.append({
+            "id": ach_id,
+            "name": ach["name"],
+            "icon": ach["icon"],
+            "desc": ach["desc"],
+            "unlocked": ach_id in unlocked
+        })
+    return json.dumps(result, ensure_ascii=False), 200, {"Content-Type": "application/json"}
+
+
+# === МИССИЯ НЕДЕЛИ ===
+
+@app.route("/api/mission", methods=["GET"])
+def get_mission():
+    return json.dumps(get_weekly_mission(), ensure_ascii=False), 200, {"Content-Type": "application/json"}
+
+
+@app.route("/api/mission/toggle", methods=["POST"])
+def toggle_mission_task():
+    req = request.get_json()
+    idx = req.get("index", 0)
+    mission = get_weekly_mission()
+    if 0 <= idx < len(mission.get("tasks", [])):
+        mission["tasks"][idx]["done"] = not mission["tasks"][idx]["done"]
+        # Проверяем все ли выполнены
+        all_done = all(t["done"] for t in mission["tasks"])
+        if all_done:
+            add_xp(mission.get("xp_reward", 500), "Миссия недели завершена!")
+        write_json("mission.json", mission)
+    return json.dumps(mission, ensure_ascii=False), 200, {"Content-Type": "application/json"}
 
 
 # === АНАЛИЗ НИШИ ===
@@ -1244,25 +1385,19 @@ def analyze_niche():
     try:
         req = request.get_json()
         niche = req.get("niche", "")
-        description = req.get("description", "")
-
-        prompt = f"""Проанализируй бизнес-нишу и дай структурированную оценку.
+        prompt = f"""Проанализируй бизнес-нишу:
 
 Ниша: {niche}
-Описание: {description or 'Нет описания'}
 
-Дай оценку в формате БИЗНЕС-ОЦЕНКИ.
-Также добавь:
-- 3 главных риска
-- 3 конкурента
-- Стратегию входа
-- План на 4 недели (4 спринта)"""
+Дай оценку:
+📊 Ниша, 🎯 ЦА, 💰 Монетизация, ⚡ Конкуренция, 🕐 MVP, 📈 TAM, ✅ Вердикт
++ 3 риска, 3 конкурента, стратегия входа, план на 4 недели"""
 
         answer = call_ai(JARVIS_SYSTEM_PROMPT, prompt, [])
+        track_activity("niche")
         add_xp(50, f"Анализ ниши: {niche}")
 
-        return json.dumps({"analysis": answer, "timestamp": datetime.now().isoformat()},
-                          ensure_ascii=False), 200, {"Content-Type": "application/json"}
+        return json.dumps({"analysis": answer}, ensure_ascii=False), 200, {"Content-Type": "application/json"}
     except Exception as e:
         return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
 
@@ -1275,21 +1410,47 @@ def generate_sprints():
         req = request.get_json()
         project = req.get("project", "")
         weeks = req.get("weeks", 4)
-
         prompt = f"""Разбей проект на {weeks} недельных спринтов.
-
 Проект: {project}
-
-Для каждого спринта:
-1. Цель (одно предложение)
-2. 4-6 задач (чек-лист)
-3. Критерий готовности
-4. Ожидаемый результат"""
+Для каждого: цель, 4-6 задач, критерий готовности."""
 
         answer = call_ai(JARVIS_SYSTEM_PROMPT, prompt, [])
+        return json.dumps({"sprints": answer}, ensure_ascii=False), 200, {"Content-Type": "application/json"}
+    except Exception as e:
+        return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
 
-        return json.dumps({"sprints": answer, "timestamp": datetime.now().isoformat()},
-                          ensure_ascii=False), 200, {"Content-Type": "application/json"}
+
+# === СКОРИНГ ИДЕИ ===
+
+@app.route("/api/score-idea", methods=["POST"])
+def score_idea():
+    try:
+        req = request.get_json()
+        idea = req.get("idea", "")
+        prompt = f"""Оцени бизнес-идею по 5 критериям (от 1 до 10):
+
+Идея: {idea}
+
+Ответь СТРОГО в JSON:
+{{"market": 8, "competition": 6, "mvp_speed": 9, "monetization": 7, "scalability": 5, "total": 70, "verdict": "краткий вердикт"}}
+
+market = размер рынка
+competition = мало конкурентов = высокий балл
+mvp_speed = скорость создания MVP
+monetization = потенциал монетизации
+scalability = масштабируемость
+total = среднее * 10"""
+
+        answer = call_ai("Отвечай ТОЛЬКО JSON. Без пояснений.", prompt, [])
+        try:
+            start = answer.find('{')
+            end = answer.rfind('}') + 1
+            score = json.loads(answer[start:end])
+        except:
+            score = {"total": 0, "verdict": answer}
+
+        track_activity("niche")
+        return json.dumps(score, ensure_ascii=False), 200, {"Content-Type": "application/json"}
     except Exception as e:
         return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
 
@@ -1301,6 +1462,7 @@ def get_stats_route():
     projects = read_json("projects.json", {"projects": []})
     quests = read_json("quests.json", {"quests": []})
     player = get_player()
+    activity = read_json("activity.json", {"total_messages": 0, "niches_analyzed": 0})
 
     active = [p for p in projects["projects"] if p.get("status") == "active"]
     total_rev = sum(p.get("revenue", 0) for p in projects["projects"])
@@ -1308,9 +1470,12 @@ def get_stats_route():
     return json.dumps({
         "active_projects": len(active),
         "total_projects": len(projects["projects"]),
+        "archived_projects": len([p for p in projects["projects"] if p.get("status") == "archived"]),
         "total_revenue": total_rev,
         "active_quests": len([q for q in quests["quests"] if not q.get("completed")]),
         "completed_quests": len([q for q in quests["quests"] if q.get("completed")]),
+        "total_messages": activity.get("total_messages", 0),
+        "niches_analyzed": activity.get("niches_analyzed", 0),
         "player": player
     }, ensure_ascii=False), 200, {"Content-Type": "application/json"}
 
@@ -1326,9 +1491,10 @@ def api_modes():
 
 def setup_webhook():
     if RENDER_URL and TELEGRAM_BOT_TOKEN:
-        url = "https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/setWebhook"
         try:
-            resp = requests.post(url, json={"url": RENDER_URL + "/webhook"}, timeout=10)
+            resp = requests.post(
+                "https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/setWebhook",
+                json={"url": RENDER_URL + "/webhook"}, timeout=10)
             print("Webhook:", resp.json())
         except Exception as e:
             print("Webhook error:", e)
@@ -1348,5 +1514,5 @@ if __name__ == "__main__":
     setup_webhook()
     threading.Thread(target=keep_alive, daemon=True).start()
     port = int(os.environ.get("PORT", 10000))
-    print(f"\n🤖 JARVIS 2.0 запущен на http://localhost:{port}\n")
+    print(f"\n🤖 JARVIS 2.0 — http://localhost:{port}\n")
     app.run(host="0.0.0.0", port=port)
