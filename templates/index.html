@@ -3,588 +3,1093 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>JARVIS 2.0</title>
+<title>JARVIS 2.0 — Command Center</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
-*{margin:0;padding:0;box-sizing:border-box}
-:root{
-  --bg:#0a0e17;--bg2:#111827;--bg3:#1a2235;
-  --card:rgba(26,34,53,.6);--glass:rgba(17,24,39,.4);
-  --brd:rgba(0,255,255,.08);--brd-a:rgba(0,255,255,.3);
-  --cyan:#00f0ff;--violet:#8b5cf6;--pink:#f472b6;
-  --green:#34d399;--yellow:#fbbf24;--red:#f87171;
-  --t1:#e2e8f0;--t2:#94a3b8;--t3:#475569;
-  --sans:'Segoe UI',system-ui,sans-serif;
-  --mono:'Courier New',monospace;
+* { margin:0; padding:0; box-sizing:border-box; }
+:root {
+  --bg: #0a0a0f;
+  --bg2: #12121a;
+  --bg3: #1a1a2e;
+  --bg4: #252540;
+  --accent: #00d4ff;
+  --accent2: #7c3aed;
+  --green: #10b981;
+  --red: #ef4444;
+  --orange: #f59e0b;
+  --yellow: #eab308;
+  --pink: #ec4899;
+  --text: #e2e8f0;
+  --text2: #94a3b8;
+  --text3: #64748b;
+  --radius: 12px;
+  --shadow: 0 4px 24px rgba(0,0,0,0.4);
 }
-html,body{height:100%;font-family:var(--sans);background:var(--bg);color:var(--t1);overflow:hidden}
+body { background:var(--bg); color:var(--text); font-family:'Segoe UI',system-ui,sans-serif; min-height:100vh; }
+::-webkit-scrollbar { width:6px; }
+::-webkit-scrollbar-track { background:var(--bg2); }
+::-webkit-scrollbar-thumb { background:var(--bg4); border-radius:3px; }
 
-.app{display:grid;grid-template-columns:260px 1fr 280px;grid-template-rows:46px 1fr;height:100vh}
+/* === LAYOUT === */
+.app { display:flex; height:100vh; }
+.sidebar { width:280px; background:var(--bg2); border-right:1px solid var(--bg3); display:flex; flex-direction:column; overflow-y:auto; flex-shrink:0; }
+.main { flex:1; display:flex; flex-direction:column; overflow:hidden; }
+.topbar { padding:12px 20px; background:var(--bg2); border-bottom:1px solid var(--bg3); display:flex; align-items:center; gap:12px; flex-shrink:0; }
 
-/* TOP */
-.top{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;padding:0 14px;
-  background:rgba(10,14,23,.95);border-bottom:1px solid var(--brd)}
-.logo{display:flex;align-items:center;gap:8px}
-.logo b{font-family:var(--mono);font-size:.95rem;letter-spacing:3px;
-  background:linear-gradient(135deg,var(--cyan),var(--violet));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.logo small{font-size:.55rem;color:var(--t3);background:var(--glass);padding:2px 5px;border-radius:3px}
-.nav{display:flex;gap:3px}
-.nav button{font-size:.7rem;padding:5px 12px;border-radius:6px;border:none;background:none;color:var(--t3);cursor:pointer;transition:.15s}
-.nav button:hover{color:var(--t2);background:var(--glass)}
-.nav button.on{color:var(--cyan);background:rgba(0,240,255,.1)}
-.status{display:flex;align-items:center;gap:5px;font-size:.6rem;color:var(--t3)}
-.status .dot{width:5px;height:5px;border-radius:50%;background:var(--green);animation:p 2s infinite}
-@keyframes p{0%,100%{opacity:1}50%{opacity:.3}}
+/* === SIDEBAR === */
+.logo { padding:20px; text-align:center; border-bottom:1px solid var(--bg3); }
+.logo h1 { font-size:20px; background:linear-gradient(135deg,var(--accent),var(--accent2)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+.logo small { color:var(--text3); font-size:11px; }
 
-/* LEFT */
-.left{background:rgba(10,14,23,.7);border-right:1px solid var(--brd);display:flex;flex-direction:column;overflow:hidden}
-.player{margin:8px;padding:10px;background:linear-gradient(135deg,rgba(139,92,246,.08),rgba(0,240,255,.04));
-  border:1px solid rgba(139,92,246,.15);border-radius:10px}
-.player-top{display:flex;justify-content:space-between;margin-bottom:5px}
-.player-rank{font-family:var(--mono);font-size:.6rem;color:var(--violet);font-weight:700}
-.player-xp{font-family:var(--mono);font-size:.55rem;color:var(--t3)}
-.xp-bar{width:100%;height:4px;background:var(--bg);border-radius:2px;overflow:hidden;margin-bottom:6px}
-.xp-fill{height:100%;background:linear-gradient(90deg,var(--violet),var(--cyan));border-radius:2px;transition:width 1s}
-.pstats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;text-align:center}
-.pstats .v{font-family:var(--mono);font-size:.9rem;font-weight:700}
-.pstats .l{font-size:.45rem;color:var(--t3);text-transform:uppercase}
+.player-card { padding:16px; border-bottom:1px solid var(--bg3); }
+.player-level { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+.player-level .lvl { font-size:18px; font-weight:700; color:var(--accent); }
+.player-level .rank { font-size:12px; color:var(--text2); }
+.xp-bar { height:8px; background:var(--bg4); border-radius:4px; overflow:hidden; margin-bottom:6px; }
+.xp-bar-fill { height:100%; background:linear-gradient(90deg,var(--accent),var(--accent2)); border-radius:4px; transition:width .5s; }
+.xp-text { font-size:11px; color:var(--text3); display:flex; justify-content:space-between; }
+.streak-row { display:flex; align-items:center; gap:6px; margin-top:8px; font-size:13px; }
+.streak-row .fire { font-size:16px; }
 
-.lscroll{flex:1;overflow-y:auto;padding:0 6px}
-.lscroll::-webkit-scrollbar{width:3px}
-.lscroll::-webkit-scrollbar-thumb{background:var(--bg3);border-radius:2px}
-.slabel{font-family:var(--mono);font-size:.5rem;color:var(--t3);text-transform:uppercase;letter-spacing:2px;
-  padding:8px 4px 4px;display:flex;justify-content:space-between}
-.slabel .cnt{font-size:.45rem;color:var(--cyan);background:rgba(0,240,255,.1);padding:1px 5px;border-radius:7px}
+.nav-section { padding:12px; }
+.nav-section h3 { font-size:11px; text-transform:uppercase; color:var(--text3); margin-bottom:8px; letter-spacing:1px; }
+.nav-btn { width:100%; padding:10px 12px; background:none; border:none; color:var(--text2); cursor:pointer; text-align:left; border-radius:8px; font-size:13px; display:flex; align-items:center; gap:8px; transition:all .2s; margin-bottom:2px; }
+.nav-btn:hover { background:var(--bg3); color:var(--text); }
+.nav-btn.active { background:var(--bg3); color:var(--accent); }
+.nav-btn .badge { margin-left:auto; background:var(--accent); color:var(--bg); font-size:10px; padding:2px 6px; border-radius:10px; font-weight:700; }
 
-.mi{display:flex;align-items:center;gap:7px;padding:6px 7px;border-radius:7px;cursor:pointer;
-  border-left:3px solid transparent;transition:.15s;font-size:.7rem}
-.mi:hover{background:var(--glass)}
-.mi.on{background:rgba(0,240,255,.08);border-left-color:var(--cyan)}
-.mi .ic{width:24px;height:24px;border-radius:5px;display:flex;align-items:center;justify-content:center;
-  font-size:.7rem;background:var(--glass);flex-shrink:0}
-.mi .nm{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.project-item { padding:10px 12px; cursor:pointer; border-radius:8px; margin-bottom:2px; display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text2); transition:all .2s; }
+.project-item:hover { background:var(--bg3); color:var(--text); }
+.project-item .dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.project-item .stage-dot { }
+.dot-idea { background:var(--text3); }
+.dot-validation { background:var(--orange); }
+.dot-mvp { background:var(--accent); }
+.dot-launch { background:var(--green); }
+.dot-growth { background:var(--pink); }
 
-.pi{display:flex;align-items:center;gap:7px;padding:5px 7px;border-radius:7px;cursor:pointer;transition:.15s;font-size:.65rem}
-.pi:hover{background:var(--glass)}
-.pi .dt{width:5px;height:5px;border-radius:50%;flex-shrink:0}
-.pi .pn{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.pi .pr{font-family:var(--mono);font-size:.55rem;color:var(--green);flex-shrink:0}
+/* === MAIN CONTENT === */
+.content { flex:1; overflow-y:auto; padding:20px; }
 
-.nbtn{margin:6px;padding:7px;border:1px dashed var(--brd-a);border-radius:7px;background:none;color:var(--cyan);
-  font-family:var(--mono);font-size:.65rem;cursor:pointer;text-align:center;transition:.15s}
-.nbtn:hover{background:rgba(0,240,255,.08);border-style:solid}
+/* === TABS === */
+.tabs { display:flex; gap:4px; }
+.tab { padding:8px 16px; background:none; border:none; color:var(--text3); cursor:pointer; border-radius:8px 8px 0 0; font-size:13px; transition:all .2s; }
+.tab:hover { color:var(--text); }
+.tab.active { background:var(--bg3); color:var(--accent); }
 
-/* MAIN */
-.main{display:flex;flex-direction:column;overflow:hidden}
-.view{display:none;flex:1;overflow:hidden}
-.view.on{display:flex;flex-direction:column}
+/* === CARDS === */
+.card { background:var(--bg2); border:1px solid var(--bg3); border-radius:var(--radius); padding:20px; margin-bottom:16px; }
+.card h2 { font-size:16px; margin-bottom:12px; display:flex; align-items:center; gap:8px; }
+.card h3 { font-size:14px; margin-bottom:8px; color:var(--text2); }
 
-/* DASH */
-.dash{flex:1;overflow-y:auto;padding:14px}
-.dash::-webkit-scrollbar{width:3px}
-.dash::-webkit-scrollbar-thumb{background:var(--bg3);border-radius:2px}
+/* === STATS GRID === */
+.stats-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:20px; }
+.stat-card { background:var(--bg2); border:1px solid var(--bg3); border-radius:var(--radius); padding:16px; text-align:center; }
+.stat-card .num { font-size:28px; font-weight:700; background:linear-gradient(135deg,var(--accent),var(--accent2)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+.stat-card .label { font-size:11px; color:var(--text3); margin-top:4px; text-transform:uppercase; }
 
-/* MISSION */
-.mission{background:linear-gradient(135deg,rgba(0,240,255,.04),rgba(139,92,246,.04));border:1px solid var(--brd);
-  border-radius:14px;padding:14px;margin-bottom:12px;position:relative}
-.mission::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--cyan),var(--violet),transparent)}
-.mission-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
-.mission-badge{font-family:var(--mono);font-size:.5rem;font-weight:700;color:var(--bg);background:linear-gradient(135deg,var(--cyan),var(--violet));
-  padding:2px 8px;border-radius:6px;text-transform:uppercase;letter-spacing:1px}
-.mission-name{font-size:.85rem;font-weight:700;margin-left:8px}
-.mission-timer{font-family:var(--mono);font-size:.6rem;color:var(--t3)}
-.mission-bar{width:100%;height:5px;background:var(--bg);border-radius:3px;overflow:hidden;margin-bottom:8px}
-.mission-fill{height:100%;background:linear-gradient(90deg,var(--cyan),var(--violet));border-radius:3px;transition:width .5s}
-.mission-tasks{display:flex;flex-direction:column;gap:4px}
-.mt{display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:6px;cursor:pointer;transition:.15s;font-size:.7rem}
-.mt:hover{background:var(--glass)}
-.mt .ch{width:14px;height:14px;border:2px solid var(--t3);border-radius:3px;display:flex;align-items:center;
-  justify-content:center;font-size:.45rem;flex-shrink:0;transition:.15s}
-.mt.done .ch{background:var(--green);border-color:var(--green);color:var(--bg)}
-.mt .tx{color:var(--t2)}
-.mt.done .tx{color:var(--t3);text-decoration:line-through}
+/* === FUNNEL === */
+.funnel { display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap; }
+.funnel-stage { flex:1; min-width:120px; background:var(--bg2); border:1px solid var(--bg3); border-radius:var(--radius); padding:12px; text-align:center; cursor:pointer; transition:all .2s; position:relative; }
+.funnel-stage:hover { border-color:var(--accent); }
+.funnel-stage .stage-icon { font-size:24px; }
+.funnel-stage .stage-name { font-size:11px; color:var(--text2); margin-top:4px; }
+.funnel-stage .stage-count { font-size:20px; font-weight:700; color:var(--accent); margin-top:4px; }
+.funnel-arrow { display:flex; align-items:center; color:var(--text3); font-size:18px; }
 
-.sgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-bottom:14px}
-.sc{background:var(--card);border:1px solid var(--brd);border-radius:10px;padding:12px;position:relative;overflow:hidden}
-.sc::before{content:'';position:absolute;top:0;left:0;right:0;height:2px}
-.sc:nth-child(1)::before{background:var(--cyan)}.sc:nth-child(2)::before{background:var(--violet)}
-.sc:nth-child(3)::before{background:var(--green)}.sc:nth-child(4)::before{background:var(--pink)}
-.sc .lb{font-family:var(--mono);font-size:.5rem;color:var(--t3);text-transform:uppercase;letter-spacing:.5px}
-.sc .vl{font-family:var(--mono);font-size:1.2rem;font-weight:800;margin-top:3px}
-.sc:nth-child(1) .vl{color:var(--cyan)}.sc:nth-child(2) .vl{color:var(--violet)}
-.sc:nth-child(3) .vl{color:var(--green)}.sc:nth-child(4) .vl{color:var(--pink)}
-.sc .sb{font-size:.55rem;color:var(--t3);margin-top:2px}
+/* === CHAT === */
+.chat-container { display:flex; flex-direction:column; height:100%; }
+.chat-messages { flex:1; overflow-y:auto; padding:20px; display:flex; flex-direction:column; gap:12px; }
+.chat-input-row { padding:16px 20px; background:var(--bg2); border-top:1px solid var(--bg3); display:flex; gap:8px; }
+.chat-input-row input { flex:1; padding:12px 16px; background:var(--bg3); border:1px solid var(--bg4); border-radius:var(--radius); color:var(--text); font-size:14px; outline:none; }
+.chat-input-row input:focus { border-color:var(--accent); }
 
-.section-h{font-size:.85rem;font-weight:700;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.msg { max-width:80%; padding:12px 16px; border-radius:var(--radius); font-size:14px; line-height:1.6; white-space:pre-wrap; word-break:break-word; }
+.msg.user { background:var(--accent2); align-self:flex-end; border-bottom-right-radius:4px; }
+.msg.bot { background:var(--bg3); align-self:flex-start; border-bottom-left-radius:4px; }
+.msg .time { font-size:10px; color:var(--text3); margin-top:4px; }
 
-.ngrid{display:grid;grid-template-columns:repeat(2,1fr);gap:7px;margin-bottom:14px}
-.nc{background:var(--card);border:1px solid var(--brd);border-radius:10px;padding:12px;cursor:pointer;transition:.2s}
-.nc:hover{border-color:var(--brd-a);transform:translateY(-2px)}
-.nc-top{display:flex;justify-content:space-between;margin-bottom:5px}
-.nc-score{font-family:var(--mono);font-size:.6rem;font-weight:700;color:var(--green);background:rgba(52,211,153,.1);padding:2px 7px;border-radius:5px}
-.nc-title{font-size:.78rem;font-weight:600;margin-bottom:4px}
-.nc-desc{font-size:.6rem;color:var(--t2);line-height:1.5;margin-bottom:7px}
-.nc-metrics{display:flex;gap:10px;padding-top:7px;border-top:1px solid var(--brd)}
-.nc-m{text-align:center}
-.nc-mv{font-family:var(--mono);font-size:.65rem;font-weight:700}
-.nc-ml{font-size:.4rem;color:var(--t3);text-transform:uppercase}
+/* === BUTTONS === */
+.btn { padding:10px 18px; border:none; border-radius:var(--radius); cursor:pointer; font-size:13px; font-weight:600; transition:all .2s; display:inline-flex; align-items:center; gap:6px; }
+.btn-primary { background:linear-gradient(135deg,var(--accent),var(--accent2)); color:white; }
+.btn-primary:hover { opacity:.9; transform:translateY(-1px); }
+.btn-secondary { background:var(--bg3); color:var(--text); border:1px solid var(--bg4); }
+.btn-secondary:hover { border-color:var(--accent); }
+.btn-danger { background:var(--red); color:white; }
+.btn-danger:hover { opacity:.9; }
+.btn-success { background:var(--green); color:white; }
+.btn-success:hover { opacity:.9; }
+.btn-sm { padding:6px 12px; font-size:12px; }
+.btn-icon { width:36px; height:36px; padding:0; display:flex; align-items:center; justify-content:center; }
 
-/* CHAT */
-.cwrap{flex:1;display:flex;flex-direction:column}
-.msgs{flex:1;overflow-y:auto;padding:14px}
-.msgs::-webkit-scrollbar{width:3px}
-.msgs::-webkit-scrollbar-thumb{background:var(--bg3);border-radius:2px}
+/* === FORMS === */
+.form-group { margin-bottom:12px; }
+.form-group label { display:block; font-size:12px; color:var(--text2); margin-bottom:4px; }
+.form-group input, .form-group textarea, .form-group select {
+  width:100%; padding:10px 12px; background:var(--bg3); border:1px solid var(--bg4);
+  border-radius:8px; color:var(--text); font-size:14px; outline:none; font-family:inherit;
+}
+.form-group input:focus, .form-group textarea:focus { border-color:var(--accent); }
+.form-group textarea { resize:vertical; min-height:80px; }
 
-.msg{display:flex;gap:8px;margin-bottom:12px;animation:fi .3s}
-@keyframes fi{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
-.msg .av{width:30px;height:30px;border-radius:7px;display:flex;align-items:center;justify-content:center;
-  font-size:.75rem;flex-shrink:0}
-.msg .av.u{background:linear-gradient(135deg,var(--violet),var(--pink))}
-.msg .av.b{background:linear-gradient(135deg,var(--cyan),var(--violet))}
-.msg .bd{flex:1;min-width:0}
-.msg .sn{font-family:var(--mono);font-size:.55rem;font-weight:600;margin-bottom:2px}
-.msg .sn.un{color:var(--violet)}.msg .sn.bn{color:var(--cyan)}
-.msg .bl{font-size:.78rem;line-height:1.7;background:var(--card);border:1px solid var(--brd);
-  border-radius:3px 12px 12px 12px;padding:9px 12px;white-space:pre-wrap;word-break:break-word}
-.msg.usr .bl{background:rgba(139,92,246,.08);border-color:rgba(139,92,246,.15);border-radius:12px 3px 12px 12px}
-.msg .tm{font-family:var(--mono);font-size:.45rem;color:var(--t3);margin-top:2px}
+/* === MODE SELECTOR === */
+.mode-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:8px; }
+.mode-btn { padding:12px; background:var(--bg3); border:2px solid transparent; border-radius:var(--radius); cursor:pointer; text-align:center; transition:all .2s; }
+.mode-btn:hover { border-color:var(--accent); }
+.mode-btn.active { border-color:var(--accent); background:rgba(0,212,255,0.1); }
+.mode-btn .mode-emoji { font-size:24px; display:block; margin-bottom:4px; }
+.mode-btn .mode-name { font-size:11px; color:var(--text2); }
 
-.typing{display:none;align-items:center;gap:4px;padding:5px 14px;font-family:var(--mono);font-size:.6rem;color:var(--cyan)}
-.typing.on{display:flex}
-.typing .d{width:4px;height:4px;border-radius:50%;background:var(--cyan);animation:bn 1.4s infinite}
-.typing .d:nth-child(2){animation-delay:.2s}.typing .d:nth-child(3){animation-delay:.4s}
-@keyframes bn{0%,60%,100%{transform:translateY(0);opacity:.3}30%{transform:translateY(-3px);opacity:1}}
+/* === QUEST === */
+.quest-item { background:var(--bg3); border-radius:var(--radius); padding:14px; margin-bottom:8px; }
+.quest-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+.quest-name { font-size:14px; font-weight:600; }
+.quest-xp { font-size:12px; color:var(--accent); }
+.quest-priority { font-size:10px; padding:2px 8px; border-radius:10px; }
+.priority-urgent { background:rgba(239,68,68,0.2); color:var(--red); }
+.priority-normal { background:rgba(16,185,129,0.2); color:var(--green); }
+.quest-task { display:flex; align-items:center; gap:8px; padding:6px 0; cursor:pointer; font-size:13px; }
+.quest-task input[type=checkbox] { accent-color:var(--accent); width:16px; height:16px; cursor:pointer; }
+.quest-task.done { text-decoration:line-through; color:var(--text3); }
+.quest-completed { opacity:0.5; }
 
-.iarea{padding:8px 12px;border-top:1px solid var(--brd);background:rgba(10,14,23,.8)}
-.irow{display:flex;gap:5px}
-.irow textarea{flex:1;padding:8px 10px;background:var(--bg3);border:1px solid var(--brd);border-radius:8px;
-  color:var(--t1);font-family:var(--sans);font-size:.8rem;resize:none;outline:none}
-.irow textarea:focus{border-color:var(--brd-a)}
-.irow textarea::placeholder{color:var(--t3)}
-.sbtn{padding:8px 16px;background:linear-gradient(135deg,var(--cyan),var(--violet));border:none;border-radius:8px;
-  color:var(--bg);font-family:var(--mono);font-size:.7rem;font-weight:700;cursor:pointer;letter-spacing:1px}
-.sbtn:hover{box-shadow:0 0 14px rgba(0,240,255,.3)}
-.sbtn:disabled{opacity:.4;cursor:not-allowed}
-.ihint{font-family:var(--mono);font-size:.45rem;color:var(--t3);margin-top:3px;text-align:center}
+/* === MISSION === */
+.mission-card { background:linear-gradient(135deg,rgba(0,212,255,0.1),rgba(124,58,237,0.1)); border:1px solid var(--accent); }
+.mission-timer { font-size:12px; color:var(--accent); margin-top:8px; }
 
-/* RIGHT */
-.right{background:rgba(10,14,23,.7);border-left:1px solid var(--brd);overflow-y:auto;padding:10px}
-.right::-webkit-scrollbar{width:3px}
-.right::-webkit-scrollbar-thumb{background:var(--bg3);border-radius:2px}
+/* === ACHIEVEMENTS === */
+.ach-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(100px,1fr)); gap:8px; }
+.ach-item { text-align:center; padding:12px 8px; background:var(--bg3); border-radius:var(--radius); transition:all .2s; }
+.ach-item.locked { opacity:0.3; filter:grayscale(1); }
+.ach-item .ach-icon { font-size:28px; display:block; margin-bottom:4px; }
+.ach-item .ach-name { font-size:10px; color:var(--text2); }
 
-.rsec{margin-bottom:12px}
-.rtitle{font-family:var(--mono);font-size:.55rem;color:var(--t3);text-transform:uppercase;letter-spacing:2px;margin-bottom:7px}
+/* === CHARTS === */
+.chart-container { position:relative; height:250px; margin-bottom:16px; }
 
-.qc{background:var(--card);border:1px solid var(--brd);border-radius:10px;padding:10px;margin-bottom:5px}
-.qc-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:5px}
-.qp{font-family:var(--mono);font-size:.45rem;font-weight:700;padding:2px 5px;border-radius:3px;text-transform:uppercase}
-.qp.urg{color:var(--red);background:rgba(248,113,113,.1)}
-.qp.nrm{color:var(--cyan);background:rgba(0,240,255,.1)}
-.qxp{font-family:var(--mono);font-size:.5rem;color:var(--violet);font-weight:600}
-.qn{font-size:.73rem;font-weight:600;margin-bottom:5px}
-.qproj{font-size:.5rem;color:var(--t3);margin-bottom:4px;font-style:italic}
-.qt{display:flex;align-items:center;gap:5px;padding:3px 0;cursor:pointer;font-size:.6rem}
-.qt .qch{width:12px;height:12px;border:2px solid var(--t3);border-radius:3px;display:flex;align-items:center;
-  justify-content:center;font-size:.4rem;flex-shrink:0;transition:.15s}
-.qt.done .qch{background:var(--green);border-color:var(--green);color:var(--bg)}
-.qt .qtx{color:var(--t2)}
-.qt.done .qtx{color:var(--t3);text-decoration:line-through}
-.qprog{display:flex;align-items:center;gap:4px;margin-top:5px;padding-top:5px;border-top:1px solid var(--brd)}
-.qbar{flex:1;height:3px;background:var(--bg);border-radius:2px;overflow:hidden}
-.qfill{height:100%;border-radius:2px;background:linear-gradient(90deg,var(--green),var(--cyan));transition:width .4s}
-.qpct{font-family:var(--mono);font-size:.5rem;color:var(--t3)}
+/* === TOAST === */
+.toast-container { position:fixed; top:20px; right:20px; z-index:10000; display:flex; flex-direction:column; gap:8px; }
+.toast { padding:14px 20px; border-radius:var(--radius); color:white; font-size:13px; font-weight:600; animation:slideIn .3s ease, fadeOut .3s ease 3s forwards; box-shadow:var(--shadow); display:flex; align-items:center; gap:8px; max-width:350px; }
+.toast-success { background:var(--green); }
+.toast-error { background:var(--red); }
+.toast-info { background:var(--accent); color:var(--bg); }
+.toast-achievement { background:linear-gradient(135deg,var(--orange),var(--pink)); }
+.toast-levelup { background:linear-gradient(135deg,var(--accent),var(--accent2)); }
+@keyframes slideIn { from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1} }
+@keyframes fadeOut { to{opacity:0;transform:translateY(-20px)} }
 
-.agrid{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}
-.ach{aspect-ratio:1;border-radius:8px;border:1px solid var(--brd);background:var(--glass);
-  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
-.ach.ul{background:linear-gradient(135deg,rgba(0,240,255,.06),rgba(139,92,246,.06));border-color:rgba(0,240,255,.15)}
-.ach.lk{opacity:.3}
-.ach .ai{font-size:.9rem}
-.ach .an{font-size:.4rem;color:var(--t3);text-align:center}
-.ach.ul .an{color:var(--t2)}
+/* === MODAL === */
+.modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:9000; display:flex; align-items:center; justify-content:center; }
+.modal { background:var(--bg2); border:1px solid var(--bg3); border-radius:var(--radius); padding:24px; max-width:500px; width:90%; max-height:80vh; overflow-y:auto; }
+.modal h2 { margin-bottom:16px; font-size:18px; }
+.modal-actions { display:flex; gap:8px; margin-top:16px; justify-content:flex-end; }
 
-/* XP popup */
-.xpop{position:fixed;color:var(--violet);font-family:var(--mono);font-size:.8rem;font-weight:700;
-  pointer-events:none;z-index:9999;animation:xpu 1.2s ease forwards}
-@keyframes xpu{0%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-25px)}}
+/* === RESEARCH RESULTS === */
+.reddit-post { background:var(--bg3); border-radius:8px; padding:12px; margin-bottom:8px; }
+.reddit-post .post-title { font-size:13px; font-weight:600; color:var(--accent); }
+.reddit-post .post-meta { font-size:11px; color:var(--text3); margin-top:4px; }
+.reddit-post .post-text { font-size:12px; color:var(--text2); margin-top:6px; }
 
-/* MODAL */
-.mo{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(5px);z-index:5000;
-  justify-content:center;align-items:center}
-.mo.on{display:flex}
-.mod{background:var(--bg2);border:1px solid var(--brd);border-radius:14px;padding:18px;width:90%;max-width:480px;
-  animation:modin .3s}
-@keyframes modin{from{opacity:0;transform:scale(.95)}to{opacity:1;transform:none}}
-.mod h3{font-size:.95rem;margin-bottom:12px}
-.mod .fld{margin-bottom:8px}
-.mod .fld label{display:block;font-family:var(--mono);font-size:.55rem;color:var(--t3);text-transform:uppercase;letter-spacing:1px;margin-bottom:2px}
-.mod .fld input,.mod .fld textarea{width:100%;padding:7px 9px;background:var(--bg3);border:1px solid var(--brd);
-  border-radius:7px;color:var(--t1);font-family:var(--sans);font-size:.78rem;outline:none}
-.mod .fld input:focus,.mod .fld textarea:focus{border-color:var(--brd-a)}
-.mod .fld textarea{resize:vertical;min-height:50px}
-.mod .acts{display:flex;gap:5px;justify-content:flex-end;margin-top:12px}
-.mod .btn{padding:7px 16px;border-radius:7px;font-family:var(--mono);font-size:.65rem;font-weight:600;cursor:pointer;border:none;transition:.15s}
-.mod .btn.pri{background:linear-gradient(135deg,var(--cyan),var(--violet));color:var(--bg)}
-.mod .btn.sec{background:var(--glass);color:var(--t2);border:1px solid var(--brd)}
-.mod-res{font-size:.75rem;line-height:1.6;white-space:pre-wrap;max-height:50vh;overflow-y:auto;margin-top:8px;
-  padding:10px;background:var(--bg);border-radius:7px;border:1px solid var(--brd)}
+/* === PROJECT DETAIL === */
+.project-stage-bar { display:flex; gap:4px; margin-bottom:16px; }
+.stage-step { flex:1; padding:8px; text-align:center; border-radius:8px; font-size:11px; cursor:pointer; transition:all .2s; background:var(--bg4); color:var(--text3); }
+.stage-step.current { background:var(--accent); color:var(--bg); font-weight:700; }
+.stage-step.passed { background:rgba(16,185,129,0.3); color:var(--green); }
+.stage-step:hover { opacity:.8; }
 
-@media(max-width:900px){
-  .app{grid-template-columns:1fr}
-  .left,.right{display:none}
-  .ngrid,.sgrid{grid-template-columns:repeat(2,1fr)}
+.link-item { display:flex; align-items:center; gap:8px; padding:8px; background:var(--bg3); border-radius:8px; margin-bottom:6px; font-size:13px; }
+.link-item a { color:var(--accent); text-decoration:none; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.link-item a:hover { text-decoration:underline; }
+
+.note-item { padding:10px; background:var(--bg3); border-radius:8px; margin-bottom:6px; font-size:13px; }
+.note-item .note-date { font-size:10px; color:var(--text3); margin-top:4px; }
+
+/* === HAMBURGER === */
+.hamburger { display:none; background:none; border:none; color:var(--text); font-size:24px; cursor:pointer; }
+
+/* === MOBILE === */
+@media(max-width:768px) {
+  .sidebar { position:fixed; left:-280px; top:0; bottom:0; z-index:8000; transition:left .3s; }
+  .sidebar.open { left:0; }
+  .hamburger { display:block; }
+  .stats-grid { grid-template-columns:repeat(2,1fr); }
+  .funnel { flex-direction:column; }
+  .funnel-arrow { display:none; }
+  .mode-grid { grid-template-columns:repeat(3,1fr); }
+  .ach-grid { grid-template-columns:repeat(4,1fr); }
+  .msg { max-width:95%; }
+  .chart-container { height:200px; }
+  .modal { width:95%; }
 }
 </style>
 </head>
 <body>
+
+<div class="toast-container" id="toasts"></div>
+
 <div class="app">
-
-<header class="top">
-  <div class="logo"><b>JARVIS</b><small>v2.0</small></div>
-  <nav class="nav">
-    <button class="on" onclick="sw('dash',this)">🎯 Центр</button>
-    <button onclick="sw('chat',this)">💬 Чат</button>
-  </nav>
-  <div class="status"><div class="dot"></div>Online</div>
-</header>
-
-<aside class="left">
-  <div class="player">
-    <div class="player-top">
-      <span class="player-rank" id="pRank">⚡ Ур.1 — Новичок</span>
-      <span class="player-xp" id="pXP">0/1000 XP</span>
+  <!-- SIDEBAR -->
+  <aside class="sidebar" id="sidebar">
+    <div class="logo">
+      <h1>🤖 JARVIS 2.0</h1>
+      <small>AI Command Center</small>
     </div>
-    <div class="xp-bar"><div class="xp-fill" id="xFill" style="width:0%"></div></div>
-    <div class="pstats">
-      <div><div class="v" id="sP">0</div><div class="l">Проекты</div></div>
-      <div><div class="v" id="sQ">0</div><div class="l">Квесты</div></div>
-      <div><div class="v" id="sS">0</div><div class="l">🔥</div></div>
-    </div>
-  </div>
-  <div class="lscroll">
-    <div class="slabel">Режимы</div>
-    <div id="modeList"></div>
-    <div class="slabel" style="margin-top:6px">Проекты <span class="cnt" id="pCnt">0</span></div>
-    <div id="projList"></div>
-  </div>
-  <button class="nbtn" onclick="openM('mNew')">➕ Новый проект</button>
-</aside>
 
-<div class="main">
-
-  <!-- DASHBOARD -->
-  <div class="view on" id="v-dash">
-    <div class="dash">
-      <!-- MISSION -->
-      <div class="mission" id="missionBlock"></div>
-
-      <div class="sgrid">
-        <div class="sc"><div class="lb">Проекты</div><div class="vl" id="dP">0</div><div class="sb">активных</div></div>
-        <div class="sc"><div class="lb">Квесты</div><div class="vl" id="dQ">0</div><div class="sb">активных</div></div>
-        <div class="sc"><div class="lb">MRR</div><div class="vl" id="dM">$0</div><div class="sb">доход</div></div>
-        <div class="sc"><div class="lb">XP</div><div class="vl" id="dX">0</div><div class="sb">всего</div></div>
+    <div class="player-card" id="playerCard">
+      <div class="player-level">
+        <span class="lvl">Lv.1</span>
+        <span class="rank">Новичок</span>
       </div>
-
-      <div class="section-h">🔍 Идеи для ниш</div>
-      <div class="ngrid" id="nicheGrid"></div>
+      <div class="xp-bar"><div class="xp-bar-fill" style="width:0%"></div></div>
+      <div class="xp-text"><span>0 XP</span><span>/ 1000</span></div>
+      <div class="streak-row"><span class="fire">🔥</span><span>0 дней</span></div>
     </div>
-  </div>
 
-  <!-- CHAT -->
-  <div class="view" id="v-chat">
-    <div class="cwrap">
-      <div class="msgs" id="msgs">
-        <div class="msg"><div class="av b">J</div><div class="bd"><div class="sn bn">JARVIS 2.0</div>
-        <div class="bl">Привет, командир! 🤖
+    <div class="nav-section">
+      <h3>Навигация</h3>
+      <button class="nav-btn active" onclick="showPage('dashboard')">📊 Dashboard</button>
+      <button class="nav-btn" onclick="showPage('chat')">💬 AI Чат</button>
+      <button class="nav-btn" onclick="showPage('projects')">🚀 Проекты</button>
+      <button class="nav-btn" onclick="showPage('quests')">⚔️ Квесты</button>
+      <button class="nav-btn" onclick="showPage('research')">🔍 Исследования</button>
+      <button class="nav-btn" onclick="showPage('achievements')">🏆 Достижения</button>
+      <button class="nav-btn" onclick="showPage('funnel')">📈 Воронка</button>
+      <button class="nav-btn" onclick="showPage('settings')">⚙️ Настройки</button>
+    </div>
 
-Я — JARVIS 2.0. Вот что умею:
+    <div class="nav-section">
+      <h3>Проекты</h3>
+      <div id="sidebarProjects"></div>
+    </div>
+  </aside>
 
-🔍 «Проанализируй нишу: [описание]»
-📋 «Разбей на спринты: [проект]»
-💡 «Какие ниши сейчас растут?»
-
-Что строим?</div><div class="tm">сейчас</div></div></div>
-      </div>
-      <div class="typing" id="typing"><div class="d"></div><div class="d"></div><div class="d"></div><span style="margin-left:5px">JARVIS думает...</span></div>
-      <div class="iarea">
-        <div class="irow">
-          <textarea id="inp" placeholder="Спроси JARVIS..." rows="1" onkeydown="ik(event)"></textarea>
-          <button class="sbtn" id="sbtn" onclick="send()">SEND</button>
-        </div>
-        <div class="ihint">Enter — отправить · Shift+Enter — строка</div>
+  <!-- MAIN -->
+  <div class="main">
+    <div class="topbar">
+      <button class="hamburger" onclick="toggleSidebar()">☰</button>
+      <span id="pageTitle" style="font-weight:700;font-size:16px;">📊 Dashboard</span>
+      <div style="margin-left:auto;display:flex;gap:8px;">
+        <button class="btn btn-sm btn-secondary" onclick="loadAll()">🔄</button>
       </div>
     </div>
+
+    <div class="content" id="content"></div>
   </div>
 </div>
-
-<aside class="right">
-  <div class="rsec">
-    <div class="rtitle">⚔️ Квесты</div>
-    <div id="questList"></div>
-  </div>
-  <div class="rsec">
-    <div class="rtitle">🏆 Достижения</div>
-    <div class="agrid" id="achList"></div>
-  </div>
-</aside>
-
-</div>
-
-<!-- MODALS -->
-<div class="mo" id="mNew"><div class="mod">
-  <h3>🚀 Новый проект</h3>
-  <div class="fld"><label>Название</label><input id="npN" placeholder="SaaS для фрилансеров..."></div>
-  <div class="fld"><label>Описание</label><textarea id="npD" placeholder="Что за продукт..."></textarea></div>
-  <div class="fld"><label>Монетизация</label><input id="npM" placeholder="$19/мес подписка"></div>
-  <div class="acts">
-    <button class="btn sec" onclick="closeM('mNew')">Отмена</button>
-    <button class="btn pri" onclick="createProj()">Создать</button>
-  </div>
-</div></div>
-
-<div class="mo" id="mNiche"><div class="mod" style="max-width:560px">
-  <h3>🔍 Анализ ниши</h3>
-  <div class="mod-res" id="nicheRes">Загрузка...</div>
-  <div class="acts"><button class="btn sec" onclick="closeM('mNiche')">Закрыть</button></div>
-</div></div>
-
-<div class="mo" id="mRevenue"><div class="mod">
-  <h3>💰 Добавить доход</h3>
-  <div class="fld"><label>Сумма ($)</label><input id="revAmt" type="number" placeholder="100"></div>
-  <div class="acts">
-    <button class="btn sec" onclick="closeM('mRevenue')">Отмена</button>
-    <button class="btn pri" onclick="addRevenue()">Добавить</button>
-  </div>
-</div></div>
 
 <script>
-const SID='w_'+Math.random().toString(36).substr(2,9);
-let curMode='helper', revProjId='';
-
-const MODES={
-  helper:{n:"💬 Помощник",e:"💬"},business:{n:"📊 Бизнес",e:"📊"},content:{n:"✍️ Контент",e:"✍️"},
-  coder:{n:"💻 Код",e:"💻"},startup:{n:"📋 Стартап",e:"📋"},research:{n:"🔍 Исследование",e:"🔍"},
-  automate:{n:"🚀 Автоматизация",e:"🚀"},copywriter:{n:"📝 Копирайтинг",e:"📝"},
-  coach:{n:"🎯 Коуч",e:"🎯"},translator:{n:"🌍 Переводчик",e:"🌍"}
+// === STATE ===
+const SID = localStorage.getItem('jarvis_sid') || (() => { const s = 'sid_'+Math.random().toString(36).slice(2); localStorage.setItem('jarvis_sid',s); return s; })();
+let STATE = {
+  player: {},
+  stats: {},
+  projects: [],
+  quests: [],
+  achievements: [],
+  mission: {},
+  history: [],
+  modes: {},
+  currentPage: 'dashboard',
+  currentProject: null,
+  chatMessages: JSON.parse(localStorage.getItem('jarvis_chat')||'[]'),
+  currentMode: 'helper'
 };
 
-const NICHES=[
-  {t:"Планировщик для фрилансеров",d:"478 апвоутов Reddit. Трекает доход и время.",s:"92%",tam:"$2.3M",comp:"Низкая",mvp:"2 нед"},
-  {t:"Генератор субтитров для видео",d:"340+ комментов YouTube. Автоперевод.",s:"88%",tam:"$5.1M",comp:"Средняя",mvp:"3 нед"},
-  {t:"Простая CRM для малого бизнеса",d:"Группа 45К. Без лишних функций.",s:"76%",tam:"$8.7M",comp:"Высокая",mvp:"4 нед"},
-  {t:"Генератор инвойсов",d:"Топ-3 с плохим UX, нет мобильной.",s:"91%",tam:"$3.8M",comp:"Низкая",mvp:"1.5 нед"},
-];
-
-document.addEventListener('DOMContentLoaded',()=>{renderModes();renderNiches();load()});
-
-function sw(id,btn){
-  document.querySelectorAll('.view').forEach(v=>v.classList.remove('on'));
-  document.getElementById('v-'+id).classList.add('on');
-  document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('on'));
-  if(btn)btn.classList.add('on');
-  if(id==='chat'){document.getElementById('msgs').scrollTop=9e9;document.getElementById('inp').focus()}
+// === TOAST ===
+function toast(text, type='info') {
+  const c = document.getElementById('toasts');
+  const t = document.createElement('div');
+  t.className = 'toast toast-' + type;
+  t.textContent = text;
+  c.appendChild(t);
+  setTimeout(() => t.remove(), 3500);
 }
 
-function renderModes(){
-  const l=document.getElementById('modeList');l.innerHTML='';
-  for(const[k,m]of Object.entries(MODES)){
-    const d=document.createElement('div');d.className='mi'+(k===curMode?' on':'');
-    d.innerHTML=`<div class="ic">${m.e}</div><div class="nm">${m.n}</div>`;
-    d.onclick=()=>{curMode=k;renderModes();fetch('/api/mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:SID,mode:k})})};
-    l.appendChild(d)
+// === API ===
+async function api(url, method='GET', body=null) {
+  try {
+    const opts = { method, headers: {'Content-Type':'application/json'} };
+    if (body) opts.body = JSON.stringify(body);
+    const r = await fetch(url, opts);
+    return await r.json();
+  } catch(e) {
+    toast('Ошибка сети', 'error');
+    return null;
   }
 }
 
-function renderNiches(){
-  const g=document.getElementById('nicheGrid');g.innerHTML='';
-  NICHES.forEach(n=>{
-    const d=document.createElement('div');d.className='nc';d.onclick=()=>analyzeNiche(n.t);
-    d.innerHTML=`<div class="nc-top"><span style="font-size:.55rem;color:var(--t3)">🔍</span><span class="nc-score">${n.s}</span></div>
-      <div class="nc-title">${n.t}</div><div class="nc-desc">${n.d}</div>
-      <div class="nc-metrics"><div class="nc-m"><div class="nc-mv">${n.tam}</div><div class="nc-ml">TAM</div></div>
-      <div class="nc-m"><div class="nc-mv">${n.comp}</div><div class="nc-ml">Конкуренция</div></div>
-      <div class="nc-m"><div class="nc-mv">${n.mvp}</div><div class="nc-ml">MVP</div></div></div>`;
-    g.appendChild(d)
-  })
+// === LOAD ALL DATA ===
+async function loadAll() {
+  const [stats, projects, quests, achievements, mission, history, modes] = await Promise.all([
+    api('/api/stats'),
+    api('/api/projects'),
+    api('/api/quests'),
+    api('/api/achievements'),
+    api('/api/mission'),
+    api('/api/history'),
+    api('/api/modes')
+  ]);
+  if(stats) STATE.stats = stats;
+  if(stats?.player) STATE.player = stats.player;
+  if(projects?.projects) STATE.projects = projects.projects;
+  if(quests?.quests) STATE.quests = quests.quests;
+  if(achievements) STATE.achievements = achievements;
+  if(mission) STATE.mission = mission;
+  if(history?.entries) STATE.history = history.entries;
+  if(modes) STATE.modes = modes;
+  updatePlayerCard();
+  updateSidebarProjects();
+  renderPage();
 }
 
-// CHAT
-function ik(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}}
-
-async function send(){
-  const i=document.getElementById('inp'),t=i.value.trim();if(!t)return;
-  i.value='';addMsg('user',t);showT(true);document.getElementById('sbtn').disabled=true;
-  try{
-    const r=await fetch('/api/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:SID,text:t})});
-    const d=await r.json();showT(false);
-    addMsg('bot',d.answer||d.error||'Ошибка',d.time);showXP('+25 XP')
-  }catch(e){showT(false);addMsg('bot','❌ Ошибка соединения')}
-  document.getElementById('sbtn').disabled=false;load()
+// === PLAYER CARD ===
+function updatePlayerCard() {
+  const p = STATE.player;
+  if (!p.level) return;
+  const card = document.getElementById('playerCard');
+  const pct = p.xp_to_next > 0 ? (p.xp / p.xp_to_next * 100) : 0;
+  card.innerHTML = `
+    <div class="player-level">
+      <span class="lvl">Lv.${p.level}</span>
+      <span class="rank">${p.rank||'Новичок'}</span>
+    </div>
+    <div class="xp-bar"><div class="xp-bar-fill" style="width:${pct}%"></div></div>
+    <div class="xp-text"><span>${p.xp||0} XP</span><span>/ ${p.xp_to_next||1000}</span></div>
+    <div class="streak-row"><span class="fire">🔥</span><span>${p.streak||0} дней</span>
+    ${p.max_streak > 0 ? `<span style="color:var(--text3);font-size:11px;">(рекорд: ${p.max_streak})</span>` : ''}</div>
+  `;
 }
 
-function addMsg(role,text,time){
-  const m=document.getElementById('msgs'),u=role==='user',
-    now=time||new Date().toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'}),
-    d=document.createElement('div');d.className='msg'+(u?' usr':'');
-  d.innerHTML=`<div class="av ${u?'u':'b'}">${u?'👤':'J'}</div><div class="bd">
-    <div class="sn ${u?'un':'bn'}">${u?'Вы':'JARVIS 2.0'}</div>
-    <div class="bl">${esc(text)}</div><div class="tm">${now}</div></div>`;
-  m.appendChild(d);m.scrollTop=9e9
+// === SIDEBAR PROJECTS ===
+function updateSidebarProjects() {
+  const c = document.getElementById('sidebarProjects');
+  const active = STATE.projects.filter(p => p.status !== 'archived');
+  c.innerHTML = active.map(p => `
+    <div class="project-item" onclick="openProject('${p.id}')">
+      <span class="dot dot-${p.stage||'idea'}"></span>
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.name}</span>
+      ${p.revenue > 0 ? `<span style="color:var(--green);font-size:11px;">$${p.revenue}</span>` : ''}
+    </div>
+  `).join('') || '<div style="padding:12px;color:var(--text3);font-size:12px;">Нет проектов</div>';
 }
 
-function showT(s){document.getElementById('typing').classList.toggle('on',s)}
-function esc(t){const d=document.createElement('div');d.textContent=t;return d.innerHTML}
-
-function showXP(text){
-  const x=document.createElement('div');x.className='xpop';x.textContent=text;
-  x.style.left=Math.random()*60+20+'%';x.style.top='50%';
-  document.body.appendChild(x);setTimeout(()=>x.remove(),1200)
+// === PAGES ===
+function showPage(page) {
+  STATE.currentPage = page;
+  STATE.currentProject = null;
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  const titles = {dashboard:'📊 Dashboard',chat:'💬 AI Чат',projects:'🚀 Проекты',quests:'⚔️ Квесты',research:'🔍 Исследования',achievements:'🏆 Достижения',funnel:'📈 Воронка',settings:'⚙️ Настройки'};
+  document.getElementById('pageTitle').textContent = titles[page]||page;
+  event?.target?.classList?.add('active');
+  closeSidebar();
+  renderPage();
 }
 
-// LOAD DATA
-async function load(){
-  try{
-    const[stats,mission,ach]=await Promise.all([
-      fetch('/api/stats').then(r=>r.json()),
-      fetch('/api/mission').then(r=>r.json()),
-      fetch('/api/achievements').then(r=>r.json())
-    ]);
-    const p=stats.player||{};
-    document.getElementById('pRank').textContent=`⚡ Ур.${p.level||1} — ${p.rank||'Новичок'}`;
-    document.getElementById('pXP').textContent=`${p.xp||0}/${p.xp_to_next||1000} XP`;
-    document.getElementById('xFill').style.width=(p.xp_to_next?Math.round(p.xp/p.xp_to_next*100):0)+'%';
-    document.getElementById('sP').textContent=stats.active_projects||0;
-    document.getElementById('sQ').textContent=stats.active_quests||0;
-    document.getElementById('sS').textContent=p.streak||0;
-    document.getElementById('dP').textContent=stats.active_projects||0;
-    document.getElementById('dQ').textContent=stats.active_quests||0;
-    document.getElementById('dM').textContent='$'+(stats.total_revenue||0);
-    document.getElementById('dX').textContent=p.total_xp||0;
-
-    // MISSION
-    renderMission(mission);
-    // ACHIEVEMENTS
-    renderAch(ach);
-    // PROJECTS
-    loadProjects();
-    // QUESTS
-    loadQuests();
-  }catch(e){console.log('Load err:',e)}
+function renderPage() {
+  const c = document.getElementById('content');
+  const pages = {dashboard:renderDashboard,chat:renderChat,projects:renderProjects,quests:renderQuests,research:renderResearch,achievements:renderAchievements,funnel:renderFunnel,settings:renderSettings,projectDetail:renderProjectDetail};
+  const fn = pages[STATE.currentPage];
+  if(fn) c.innerHTML = fn();
+  afterRender();
 }
 
-function renderMission(m){
-  const b=document.getElementById('missionBlock');
-  if(!m||!m.tasks){b.innerHTML='<div style="text-align:center;color:var(--t3);font-size:.7rem">Загрузка миссии...</div>';return}
-  const done=m.tasks.filter(t=>t.done).length,total=m.tasks.length,pct=total?Math.round(done/total*100):0;
-  let end='';
-  try{const d=new Date(m.week_end);const now=new Date();const diff=Math.max(0,Math.ceil((d-now)/(1000*60*60*24)));end=diff+'д'}catch(e){end='—'}
-  let tasks='';
-  m.tasks.forEach((t,i)=>{
-    tasks+=`<div class="mt ${t.done?'done':''}" onclick="toggleMission(${i})"><div class="ch">${t.done?'✓':''}</div><span class="tx">${t.text}</span></div>`
+// === AFTER RENDER (bindings) ===
+function afterRender() {
+  if(STATE.currentPage === 'chat') initChat();
+  if(STATE.currentPage === 'dashboard') initCharts();
+}
+
+// === DASHBOARD ===
+function renderDashboard() {
+  const s = STATE.stats;
+  const p = STATE.player;
+  const m = STATE.mission;
+  const f = s.funnel || {};
+  return `
+    <div class="stats-grid">
+      <div class="stat-card"><div class="num">${s.active_projects||0}</div><div class="label">Проекты</div></div>
+      <div class="stat-card"><div class="num">$${s.total_revenue||0}</div><div class="label">Доход</div></div>
+      <div class="stat-card"><div class="num">${s.completed_quests||0}</div><div class="label">Квесты</div></div>
+      <div class="stat-card"><div class="num">${p.total_xp||0}</div><div class="label">Всего XP</div></div>
+      <div class="stat-card"><div class="num">${s.total_messages||0}</div><div class="label">Сообщения</div></div>
+      <div class="stat-card"><div class="num">${s.niches_analyzed||0}</div><div class="label">Ниш</div></div>
+    </div>
+
+    ${m.name ? `
+    <div class="card mission-card">
+      <h2>🎯 Миссия недели: ${m.name}</h2>
+      ${(m.tasks||[]).map((t,i) => `
+        <div class="quest-task ${t.done?'done':''}" onclick="toggleMission(${i})">
+          <input type="checkbox" ${t.done?'checked':''} onclick="event.stopPropagation();toggleMission(${i})">
+          <span>${t.text}</span>
+        </div>
+      `).join('')}
+      <div class="mission-timer">⏰ До ${m.week_end||'...'} | 🎁 +${m.xp_reward||500} XP</div>
+    </div>
+    ` : ''}
+
+    <div class="card">
+      <h2>📈 Воронка проектов</h2>
+      <div class="funnel">
+        ${Object.entries(f).map(([k,v]) => `
+          <div class="funnel-stage" onclick="showPage('funnel')">
+            <div class="stage-icon">${{'idea':'💡','validation':'🔍','mvp':'🛠','launch':'🚀','growth':'📈'}[k]||'📦'}</div>
+            <div class="stage-name">${v.name||k}</div>
+            <div class="stage-count">${v.count||0}</div>
+          </div>
+          ${k!=='growth'?'<div class="funnel-arrow">→</div>':''}
+        `).join('')}
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>📊 Прогресс</h2>
+      <div class="chart-container"><canvas id="chartXP"></canvas></div>
+    </div>
+    <div class="card">
+      <h2>💰 Доход</h2>
+      <div class="chart-container"><canvas id="chartRevenue"></canvas></div>
+    </div>
+  `;
+}
+
+function initCharts() {
+  const entries = STATE.history || [];
+  if (entries.length < 1) return;
+  const labels = entries.map(e => e.date?.slice(5)||'');
+  const xpData = entries.map(e => e.xp||0);
+  const revData = entries.map(e => e.revenue||0);
+
+  const xpEl = document.getElementById('chartXP');
+  const revEl = document.getElementById('chartRevenue');
+  if(xpEl) new Chart(xpEl, {type:'line',data:{labels,datasets:[{label:'XP',data:xpData,borderColor:'#00d4ff',backgroundColor:'rgba(0,212,255,0.1)',fill:true,tension:0.3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#64748b'}},y:{ticks:{color:'#64748b'}}}}});
+  if(revEl) new Chart(revEl, {type:'bar',data:{labels,datasets:[{label:'Доход $',data:revData,backgroundColor:'rgba(16,185,129,0.6)',borderColor:'#10b981',borderWidth:1}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#64748b'}},y:{ticks:{color:'#64748b'}}}}});
+}
+
+// === CHAT ===
+function renderChat() {
+  const modeKeys = Object.keys(STATE.modes);
+  return `
+    <div class="mode-grid" style="margin-bottom:16px;">
+      ${modeKeys.map(k => {
+        const m = STATE.modes[k];
+        return `<div class="mode-btn ${STATE.currentMode===k?'active':''}" onclick="setMode('${k}')">
+          <span class="mode-emoji">${m.emoji}</span>
+          <span class="mode-name">${m.name}</span>
+        </div>`;
+      }).join('')}
+    </div>
+    <div class="chat-container" style="height:calc(100vh - 280px);">
+      <div class="chat-messages" id="chatMessages">
+        ${STATE.chatMessages.map(m => `<div class="msg ${m.role}">${m.text}<div class="time">${m.time||''}</div></div>`).join('')}
+      </div>
+      <div class="chat-input-row">
+        <input type="text" id="chatInput" placeholder="Напиши сообщение..." onkeydown="if(event.key==='Enter')sendChat()">
+        <button class="btn btn-primary" onclick="sendChat()">➤</button>
+        <button class="btn btn-secondary btn-icon" onclick="clearChat()" title="Очистить">🗑</button>
+      </div>
+    </div>
+  `;
+}
+
+function initChat() {
+  const msgs = document.getElementById('chatMessages');
+  if(msgs) msgs.scrollTop = msgs.scrollHeight;
+  document.getElementById('chatInput')?.focus();
+}
+
+async function setMode(mode) {
+  STATE.currentMode = mode;
+  await api('/api/mode','POST',{session_id:SID,mode});
+  toast(`Режим: ${STATE.modes[mode]?.name||mode}`, 'info');
+  renderPage();
+}
+
+async function sendChat() {
+  const inp = document.getElementById('chatInput');
+  const text = inp.value.trim();
+  if(!text) return;
+  inp.value = '';
+  const time = new Date().toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'});
+  STATE.chatMessages.push({role:'user',text,time});
+  renderPage();
+
+  const r = await api('/api/send','POST',{session_id:SID,text});
+  if(r?.answer) {
+    STATE.chatMessages.push({role:'bot',text:r.answer,time:r.time||time});
+    localStorage.setItem('jarvis_chat',JSON.stringify(STATE.chatMessages.slice(-50)));
+    // Check for achievements/levelup
+    const stats = await api('/api/stats');
+    if(stats?.player) {
+      const oldLvl = STATE.player.level||1;
+      STATE.player = stats.player;
+      STATE.stats = stats;
+      updatePlayerCard();
+      if(stats.player.level > oldLvl) toast(`🎉 Уровень ${stats.player.level}!`, 'levelup');
+    }
+  }
+  renderPage();
+}
+
+function clearChat() {
+  STATE.chatMessages = [];
+  localStorage.removeItem('jarvis_chat');
+  api('/api/clear','POST',{session_id:SID});
+  renderPage();
+}
+
+// === PROJECTS ===
+function renderProjects() {
+  const active = STATE.projects.filter(p => p.status !== 'archived');
+  const archived = STATE.projects.filter(p => p.status === 'archived');
+  return `
+    <div style="display:flex;gap:8px;margin-bottom:16px;">
+      <button class="btn btn-primary" onclick="showCreateProject()">➕ Новый проект</button>
+    </div>
+
+    ${active.length ? active.map(p => `
+      <div class="card" style="cursor:pointer;" onclick="openProject('${p.id}')">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <div>
+            <span class="dot dot-${p.stage||'idea'}" style="display:inline-block;margin-right:8px;"></span>
+            <strong>${p.name}</strong>
+            <span style="color:var(--text3);font-size:12px;margin-left:8px;">${{'idea':'💡 Идея','validation':'🔍 Валидация','mvp':'🛠 MVP','launch':'🚀 Запуск','growth':'📈 Рост'}[p.stage||'idea']}</span>
+          </div>
+          <div style="display:flex;gap:12px;align-items:center;">
+            ${p.revenue > 0 ? `<span style="color:var(--green);font-weight:700;">$${p.revenue}</span>` : ''}
+            <button class="btn btn-sm btn-danger" onclick="event.stopPropagation();archiveProject('${p.id}')">📦</button>
+          </div>
+        </div>
+        ${p.description ? `<div style="color:var(--text2);font-size:13px;margin-top:8px;">${p.description.slice(0,100)}</div>` : ''}
+      </div>
+    `).join('') : '<div class="card"><p style="color:var(--text3);">Создай первый проект!</p></div>'}
+
+    ${archived.length ? `
+      <h3 style="color:var(--text3);margin:20px 0 10px;">📦 Архив (${archived.length})</h3>
+      ${archived.map(p => `
+        <div class="card" style="opacity:0.5;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <strong>${p.name}</strong>
+            <button class="btn btn-sm btn-secondary" onclick="restoreProject('${p.id}')">♻️ Восстановить</button>
+          </div>
+        </div>
+      `).join('')}
+    ` : ''}
+  `;
+}
+
+function showCreateProject() {
+  showModal('Новый проект', `
+    <div class="form-group"><label>Название</label><input id="pName" placeholder="Мой крутой проект"></div>
+    <div class="form-group"><label>Описание</label><textarea id="pDesc" placeholder="Что это за проект?"></textarea></div>
+    <div class="form-group"><label>Монетизация</label><input id="pMon" placeholder="Подписки, реклама..."></div>
+  `, async () => {
+    const r = await api('/api/projects','POST',{
+      name: document.getElementById('pName').value,
+      description: document.getElementById('pDesc').value,
+      monetization: document.getElementById('pMon').value
+    });
+    if(r?.id) {
+      toast('🚀 Проект создан! Квесты генерируются...','success');
+      closeModal();
+      await loadAll();
+    }
   });
-  b.innerHTML=`<div class="mission-top"><div style="display:flex;align-items:center"><span class="mission-badge">🎯 Миссия недели</span>
-    <span class="mission-name">${m.name}</span></div><div class="mission-timer">⏱ ${end}</div></div>
-    <div class="mission-bar"><div class="mission-fill" style="width:${pct}%"></div></div>
-    <div class="mission-tasks">${tasks}</div>`
 }
 
-async function toggleMission(idx){
-  try{await fetch('/api/mission/toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({index:idx})});load()}catch(e){}
+async function archiveProject(id) {
+  await api(`/api/projects/${id}`,'DELETE');
+  toast('📦 Проект в архиве','info');
+  await loadAll();
 }
 
-function renderAch(list){
-  const g=document.getElementById('achList');g.innerHTML='';
-  (list||[]).forEach(a=>{
-    const d=document.createElement('div');d.className='ach '+(a.unlocked?'ul':'lk');
-    d.innerHTML=`<div class="ai">${a.icon}</div><div class="an">${a.name}</div>`;
-    d.title=a.desc;g.appendChild(d)
-  })
+async function restoreProject(id) {
+  await api(`/api/projects/${id}/restore`,'POST');
+  toast('♻️ Проект восстановлен','success');
+  await loadAll();
 }
 
-async function loadProjects(){
-  try{
-    const r=await fetch('/api/projects');const d=await r.json();
-    const list=document.getElementById('projList'),projects=(d.projects||[]).filter(p=>p.status==='active');
-    document.getElementById('pCnt').textContent=projects.length;
-    list.innerHTML='';
-    if(!projects.length){list.innerHTML='<div style="padding:6px;font-size:.6rem;color:var(--t3)">Нет проектов</div>';return}
-    projects.forEach(p=>{
-      const d=document.createElement('div');d.className='pi';
-      d.innerHTML=`<div class="dt" style="background:var(--green)"></div><div class="pn">${p.name}</div><div class="pr">$${p.revenue||0}</div>`;
-      d.onclick=()=>{revProjId=p.id;openM('mRevenue')};
-      list.appendChild(d)
-    })
-  }catch(e){}
+// === PROJECT DETAIL ===
+function openProject(id) {
+  STATE.currentProject = id;
+  STATE.currentPage = 'projectDetail';
+  renderPage();
 }
 
-async function loadQuests(){
-  try{
-    const r=await fetch('/api/quests');const d=await r.json();
-    const list=document.getElementById('questList'),quests=(d.quests||[]).filter(q=>!q.completed).slice(0,5);
-    list.innerHTML='';
-    if(!quests.length){list.innerHTML='<div class="qc"><div class="qn" style="font-size:.65rem;color:var(--t3)">Создай проект — квесты появятся автоматически</div></div>';return}
-    quests.forEach(q=>{
-      const tasks=q.tasks||[],done=tasks.filter(t=>t.done).length,total=tasks.length||1,pct=Math.round(done/total*100);
-      let th='';tasks.forEach((t,i)=>{
-        th+=`<div class="qt ${t.done?'done':''}" onclick="toggleTask('${q.id}',${i})"><div class="qch">${t.done?'✓':''}</div><span class="qtx">${t.text||t}</span></div>`
-      });
-      // Найдём имя проекта
-      let projName=q.project_id?'':'';
-      const div=document.createElement('div');div.className='qc';
-      div.innerHTML=`<div class="qc-top"><span class="qp ${q.priority==='urgent'?'urg':'nrm'}">${q.priority==='urgent'?'🔥 Срочно':'📋 Обычный'}</span>
-        <span class="qxp">+${q.xp_reward||100} XP</span></div>
-        <div class="qn">${q.name}</div>${th}
-        <div class="qprog"><div class="qbar"><div class="qfill" style="width:${pct}%"></div></div><span class="qpct">${done}/${total}</span></div>`;
-      list.appendChild(div)
-    })
-  }catch(e){}
+function renderProjectDetail() {
+  const p = STATE.projects.find(x => x.id === STATE.currentProject);
+  if(!p) return '<div class="card">Проект не найден</div>';
+  const quests = STATE.quests.filter(q => q.project_id === p.id);
+  const stages = ['idea','validation','mvp','launch','growth'];
+  const stageNames = {idea:'💡 Идея',validation:'🔍 Валидация',mvp:'🛠 MVP',launch:'🚀 Запуск',growth:'📈 Рост'};
+  const currentIdx = stages.indexOf(p.stage||'idea');
+
+  return `
+    <button class="btn btn-sm btn-secondary" onclick="showPage('projects')" style="margin-bottom:16px;">← Назад</button>
+
+    <div class="card">
+      <h2>${p.name}</h2>
+      <p style="color:var(--text2);margin-bottom:12px;">${p.description||'Нет описания'}</p>
+      <p style="font-size:13px;color:var(--text3);">💰 Монетизация: ${p.monetization||'—'} | 💵 Доход: $${p.revenue||0}</p>
+
+      <div class="project-stage-bar" style="margin-top:16px;">
+        ${stages.map((s,i) => `
+          <div class="stage-step ${i===currentIdx?'current':''} ${i<currentIdx?'passed':''}"
+               onclick="changeStage('${p.id}','${s}')">
+            ${stageNames[s]}
+          </div>
+        `).join('')}
+      </div>
+
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-sm btn-success" onclick="showAddRevenue('${p.id}')">💰 Добавить доход</button>
+        <button class="btn btn-sm btn-secondary" onclick="showAddLink('${p.id}')">🔗 Ссылка</button>
+        <button class="btn btn-sm btn-secondary" onclick="showAddNote('${p.id}')">📝 Заметка</button>
+        <button class="btn btn-sm btn-secondary" onclick="generateOffer('${p.id}')">✨ Оффер</button>
+      </div>
+    </div>
+
+    ${quests.length ? `
+    <div class="card">
+      <h2>⚔️ Квесты проекта</h2>
+      ${quests.map(q => renderQuestItem(q)).join('')}
+    </div>
+    ` : ''}
+
+    ${(p.links||[]).length ? `
+    <div class="card">
+      <h2>🔗 Ссылки</h2>
+      ${p.links.map(l => `
+        <div class="link-item">
+          <a href="${l.url}" target="_blank">${l.title||l.url}</a>
+          <button class="btn btn-sm btn-danger btn-icon" onclick="deleteLink('${p.id}','${l.id}')">✕</button>
+        </div>
+      `).join('')}
+    </div>
+    ` : ''}
+
+    ${(p.notes||[]).length ? `
+    <div class="card">
+      <h2>📝 Заметки</h2>
+      ${p.notes.map(n => `
+        <div class="note-item">
+          ${n.text}
+          <div class="note-date">${n.added?.slice(0,10)||''}</div>
+        </div>
+      `).join('')}
+    </div>
+    ` : ''}
+
+    ${(p.revenue_history||[]).length ? `
+    <div class="card">
+      <h2>💵 История доходов</h2>
+      ${p.revenue_history.map(r => `
+        <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--bg3);font-size:13px;">
+          <span style="color:var(--green);">+$${r.amount}</span>
+          <span style="color:var(--text3);">${r.note||''} ${r.date?.slice(0,10)||''}</span>
+        </div>
+      `).join('')}
+    </div>
+    ` : ''}
+  `;
 }
 
-async function toggleTask(qid,idx){
-  try{
-    const r=await fetch('/api/quests');const d=await r.json();
-    const q=(d.quests||[]).find(x=>x.id===qid);if(!q)return;
-    q.tasks[idx].done=!q.tasks[idx].done;
-    const allDone=q.tasks.every(t=>t.done);
-    await fetch('/api/quests/'+qid,{method:'PUT',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({tasks:q.tasks,completed:allDone})});
-    if(allDone)showXP(`+${q.xp_reward||100} XP`);
-    load()
-  }catch(e){}
+async function changeStage(pid, stage) {
+  const r = await api(`/api/projects/${pid}/stage`,'PUT',{stage});
+  if(r?.stage) {
+    toast(`Стадия: ${{idea:'💡 Идея',validation:'🔍 Валидация',mvp:'🛠 MVP',launch:'🚀 Запуск',growth:'📈 Рост'}[stage]}`,'success');
+    await loadAll();
+    openProject(pid);
+  }
 }
 
-// MODALS
-function openM(id){document.getElementById(id).classList.add('on')}
-function closeM(id){document.getElementById(id).classList.remove('on')}
-
-async function createProj(){
-  const n=document.getElementById('npN').value.trim();
-  if(!n)return alert('Введите название');
-  try{
-    await fetch('/api/projects',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({name:n,description:document.getElementById('npD').value,monetization:document.getElementById('npM').value})});
-    closeM('mNew');document.getElementById('npN').value='';document.getElementById('npD').value='';document.getElementById('npM').value='';
-    showXP('+100 XP');
-    // Ждём генерации квестов
-    setTimeout(load,3000);load()
-  }catch(e){alert('Ошибка')}
+function showAddRevenue(pid) {
+  showModal('Добавить доход', `
+    <div class="form-group"><label>Сумма ($)</label><input id="revAmount" type="number" placeholder="100"></div>
+    <div class="form-group"><label>Заметка</label><input id="revNote" placeholder="Откуда доход?"></div>
+  `, async () => {
+    await api(`/api/projects/${pid}/revenue`,'POST',{
+      amount: parseFloat(document.getElementById('revAmount').value)||0,
+      note: document.getElementById('revNote').value
+    });
+    toast('💰 Доход добавлен!','success');
+    closeModal();
+    await loadAll();
+    openProject(pid);
+  });
 }
 
-async function addRevenue(){
-  const amt=parseInt(document.getElementById('revAmt').value)||0;
-  if(!amt||!revProjId)return;
-  try{
-    await fetch(`/api/projects/${revProjId}/revenue`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({amount:amt})});
-    closeM('mRevenue');document.getElementById('revAmt').value='';showXP('+50 XP');load()
-  }catch(e){alert('Ошибка')}
+function showAddLink(pid) {
+  showModal('Добавить ссылку', `
+    <div class="form-group"><label>URL</label><input id="linkUrl" placeholder="https://..."></div>
+    <div class="form-group"><label>Название</label><input id="linkTitle" placeholder="Мой сайт"></div>
+  `, async () => {
+    await api(`/api/projects/${pid}/links`,'POST',{
+      url: document.getElementById('linkUrl').value,
+      title: document.getElementById('linkTitle').value
+    });
+    toast('🔗 Ссылка добавлена!','success');
+    closeModal();
+    await loadAll();
+    openProject(pid);
+  });
 }
 
-async function analyzeNiche(niche){
-  openM('mNiche');document.getElementById('nicheRes').textContent='⏳ Анализирую: '+niche+'...\n\n10-30 секунд...';
-  try{
-    const r=await fetch('/api/analyze-niche',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({niche})});
-    const d=await r.json();document.getElementById('nicheRes').textContent=d.analysis||d.error||'Ошибка';showXP('+50 XP');load()
-  }catch(e){document.getElementById('nicheRes').textContent='❌ Ошибка'}
+function showAddNote(pid) {
+  showModal('Добавить заметку', `
+    <div class="form-group"><label>Текст</label><textarea id="noteText" placeholder="Заметка..."></textarea></div>
+  `, async () => {
+    await api(`/api/projects/${pid}/notes`,'POST',{text: document.getElementById('noteText').value});
+    toast('📝 Заметка добавлена!','success');
+    closeModal();
+    await loadAll();
+    openProject(pid);
+  });
 }
+
+async function deleteLink(pid, lid) {
+  await api(`/api/projects/${pid}/links/${lid}`,'DELETE');
+  await loadAll();
+  openProject(pid);
+}
+
+async function generateOffer(pid) {
+  toast('✨ Генерирую оффер...','info');
+  const r = await api(`/api/projects/${pid}/offer`,'POST');
+  if(r?.offer) {
+    showModal('✨ Оффер', `<div style="white-space:pre-wrap;font-size:14px;line-height:1.6;">${r.offer}</div>`, null);
+  }
+}
+
+// === QUESTS ===
+function renderQuests() {
+  const active = STATE.quests.filter(q => !q.completed);
+  const done = STATE.quests.filter(q => q.completed);
+  return `
+    <div style="margin-bottom:16px;">
+      <button class="btn btn-primary" onclick="showCreateQuest()">➕ Новый квест</button>
+    </div>
+
+    ${active.length ? `<h3 style="margin-bottom:10px;">Активные (${active.length})</h3>` : ''}
+    ${active.map(q => renderQuestItem(q)).join('')}
+    ${!active.length ? '<div class="card"><p style="color:var(--text3);">Все квесты выполнены! 🎉</p></div>' : ''}
+
+    ${done.length ? `
+      <h3 style="color:var(--text3);margin:20px 0 10px;">✅ Выполнено (${done.length})</h3>
+      ${done.slice(-5).map(q => renderQuestItem(q)).join('')}
+    ` : ''}
+  `;
+}
+
+function renderQuestItem(q) {
+  const projectName = STATE.projects.find(p => p.id === q.project_id)?.name || '';
+  return `
+    <div class="quest-item ${q.completed?'quest-completed':''}">
+      <div class="quest-header">
+        <div>
+          <span class="quest-name">${q.name}</span>
+          ${projectName ? `<span style="font-size:11px;color:var(--text3);margin-left:8px;">📂 ${projectName}</span>` : ''}
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <span class="quest-priority priority-${q.priority||'normal'}">${q.priority==='urgent'?'🔴 Срочно':'🟢 Обычный'}</span>
+          <span class="quest-xp">+${q.xp_reward||100} XP</span>
+        </div>
+      </div>
+      ${(q.tasks||[]).map((t,i) => `
+        <div class="quest-task ${t.done?'done':''}" onclick="toggleTask('${q.id}',${i})">
+          <input type="checkbox" ${t.done?'checked':''} onclick="event.stopPropagation();toggleTask('${q.id}',${i})">
+          <span>${t.text}</span>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+async function toggleTask(qid, idx) {
+  const r = await api(`/api/quests/${qid}/toggle-task`,'POST',{index:idx});
+  if(r?.completed && !STATE.quests.find(q=>q.id===qid)?.completed) {
+    toast(`⚔️ Квест завершён! +${r.xp_reward||100} XP`,'achievement');
+  }
+  await loadAll();
+}
+
+function showCreateQuest() {
+  const projectOpts = STATE.projects.filter(p=>p.status==='active').map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+  showModal('Новый квест', `
+    <div class="form-group"><label>Название</label><input id="qName" placeholder="Название квеста"></div>
+    <div class="form-group"><label>Проект</label><select id="qProject"><option value="">Без проекта</option>${projectOpts}</select></div>
+    <div class="form-group"><label>Приоритет</label><select id="qPriority"><option value="normal">Обычный</option><option value="urgent">Срочный</option></select></div>
+    <div class="form-group"><label>Задачи (по одной на строку)</label><textarea id="qTasks" placeholder="Задача 1\nЗадача 2\nЗадача 3"></textarea></div>
+  `, async () => {
+    const tasks = document.getElementById('qTasks').value.split('\n').filter(t=>t.trim());
+    await api('/api/quests','POST',{
+      name: document.getElementById('qName').value,
+      project_id: document.getElementById('qProject').value,
+      priority: document.getElementById('qPriority').value,
+      tasks,
+      xp_reward: document.getElementById('qPriority').value==='urgent' ? 250 : 150
+    });
+    toast('⚔️ Квест создан!','success');
+    closeModal();
+    await loadAll();
+  });
+}
+
+// === MISSION ===
+async function toggleMission(idx) {
+  const r = await api('/api/mission/toggle','POST',{index:idx});
+  if(r) {
+    STATE.mission = r;
+    if(r.completed) toast('🎯 Миссия недели выполнена! +500 XP','achievement');
+    await loadAll();
+  }
+}
+
+// === RESEARCH ===
+function renderResearch() {
+  return `
+    <div class="card">
+      <h2>🔍 Анализ ниши</h2>
+      <div class="form-group"><input id="nicheInput" placeholder="Введи нишу для анализа..."></div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-primary" onclick="analyzeNiche()">📊 Анализ</button>
+        <button class="btn btn-secondary" onclick="scoreIdea()">📈 Скоринг</button>
+      </div>
+      <div id="nicheResult" style="margin-top:16px;"></div>
+    </div>
+
+    <div class="card">
+      <h2>🔎 Reddit — поиск болей</h2>
+      <div class="form-group"><input id="redditInput" placeholder="Что ищем на Reddit?"></div>
+      <button class="btn btn-primary" onclick="searchReddit()">🔎 Найти боли</button>
+      <div id="redditResult" style="margin-top:16px;"></div>
+    </div>
+
+    <div class="card">
+      <h2>📈 Тренды</h2>
+      <div class="form-group"><input id="trendInput" placeholder="Тема для анализа трендов..."></div>
+      <button class="btn btn-primary" onclick="searchTrends()">📈 Анализ трендов</button>
+      <div id="trendResult" style="margin-top:16px;"></div>
+    </div>
+  `;
+}
+
+async function analyzeNiche() {
+  const niche = document.getElementById('nicheInput').value;
+  if(!niche) return;
+  document.getElementById('nicheResult').innerHTML = '<p style="color:var(--accent);">⏳ Анализирую...</p>';
+  const r = await api('/api/analyze-niche','POST',{niche});
+  document.getElementById('nicheResult').innerHTML = r?.analysis ?
+    `<div style="white-space:pre-wrap;line-height:1.6;font-size:14px;">${r.analysis}</div>` :
+    '<p style="color:var(--red);">Ошибка</p>';
+  await loadAll();
+}
+
+async function scoreIdea() {
+  const idea = document.getElementById('nicheInput').value;
+  if(!idea) return;
+  document.getElementById('nicheResult').innerHTML = '<p style="color:var(--accent);">⏳ Оцениваю...</p>';
+  const r = await api('/api/score-idea','POST',{idea});
+  if(r && r.total !== undefined) {
+    const color = r.total >= 70 ? 'var(--green)' : r.total >= 40 ? 'var(--orange)' : 'var(--red)';
+    document.getElementById('nicheResult').innerHTML = `
+      <div style="text-align:center;margin-bottom:16px;">
+        <div style="font-size:48px;font-weight:700;color:${color};">${r.total}/100</div>
+        <div style="color:var(--text2);">${r.verdict||''}</div>
+      </div>
+      <div class="stats-grid">
+        <div class="stat-card"><div class="num">${r.market||0}</div><div class="label">Рынок</div></div>
+        <div class="stat-card"><div class="num">${r.competition||0}</div><div class="label">Конкуренция</div></div>
+        <div class="stat-card"><div class="num">${r.mvp_speed||0}</div><div class="label">Скорость MVP</div></div>
+        <div class="stat-card"><div class="num">${r.monetization||0}</div><div class="label">Монетизация</div></div>
+        <div class="stat-card"><div class="num">${r.scalability||0}</div><div class="label">Масштаб</div></div>
+      </div>
+    `;
+  }
+}
+
+async function searchReddit() {
+  const q = document.getElementById('redditInput').value;
+  if(!q) return;
+  document.getElementById('redditResult').innerHTML = '<p style="color:var(--accent);">⏳ Ищу на Reddit...</p>';
+  const r = await api('/api/reddit-search','POST',{query:q});
+  if(r?.posts) {
+    document.getElementById('redditResult').innerHTML = `
+      ${r.posts.slice(0,5).map(p => `
+        <div class="reddit-post">
+          <div class="post-title">${p.title}</div>
+          <div class="post-meta">r/${p.subreddit} | ⬆️ ${p.score} | 💬 ${p.comments}</div>
+          ${p.text ? `<div class="post-text">${p.text.slice(0,200)}</div>` : ''}
+        </div>
+      `).join('')}
+      <div class="card" style="margin-top:12px;">
+        <h3>🧠 AI Анализ болей</h3>
+        <div style="white-space:pre-wrap;font-size:14px;line-height:1.6;">${r.analysis||''}</div>
+      </div>
+    `;
+  }
+  await loadAll();
+}
+
+async function searchTrends() {
+  const q = document.getElementById('trendInput').value;
+  if(!q) return;
+  document.getElementById('trendResult').innerHTML = '<p style="color:var(--accent);">⏳ Анализирую тренды...</p>';
+  const r = await api('/api/trends','POST',{query:q});
+  document.getElementById('trendResult').innerHTML = r?.analysis ?
+    `<div style="white-space:pre-wrap;line-height:1.6;font-size:14px;">${r.analysis}</div>` :
+    '<p style="color:var(--red);">Ошибка</p>';
+  await loadAll();
+}
+
+// === ACHIEVEMENTS ===
+function renderAchievements() {
+  const unlocked = STATE.achievements.filter(a => a.unlocked);
+  const locked = STATE.achievements.filter(a => !a.unlocked);
+  return `
+    <div class="card">
+      <h2>🏆 Достижения (${unlocked.length}/${STATE.achievements.length})</h2>
+      <div class="xp-bar" style="margin-bottom:16px;"><div class="xp-bar-fill" style="width:${STATE.achievements.length?unlocked.length/STATE.achievements.length*100:0}%"></div></div>
+      <div class="ach-grid">
+        ${unlocked.map(a => `<div class="ach-item" title="${a.desc}"><span class="ach-icon">${a.icon}</span><span class="ach-name">${a.name}</span></div>`).join('')}
+        ${locked.map(a => `<div class="ach-item locked" title="${a.desc}"><span class="ach-icon">${a.icon}</span><span class="ach-name">${a.name}</span></div>`).join('')}
+      </div>
+    </div>
+  `;
+}
+
+// === FUNNEL ===
+function renderFunnel() {
+  const stages = ['idea','validation','mvp','launch','growth'];
+  const names = {idea:'💡 Идея',validation:'🔍 Валидация',mvp:'🛠 MVP',launch:'🚀 Запуск',growth:'📈 Рост'};
+  const active = STATE.projects.filter(p => p.status !== 'archived');
+
+  return `
+    <div class="card">
+      <h2>📈 Воронка гипотез</h2>
+      <p style="color:var(--text2);font-size:13px;margin-bottom:16px;">Перемещай проекты по стадиям кликая на стадию в карточке проекта</p>
+    </div>
+    ${stages.map(s => {
+      const projects = active.filter(p => (p.stage||'idea') === s);
+      return `
+        <div class="card">
+          <h2>${names[s]} <span style="color:var(--text3);font-size:14px;">(${projects.length})</span></h2>
+          ${projects.length ? projects.map(p => `
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:10px;background:var(--bg3);border-radius:8px;margin-bottom:6px;">
+              <div>
+                <strong style="cursor:pointer;" onclick="openProject('${p.id}')">${p.name}</strong>
+                ${p.revenue > 0 ? `<span style="color:var(--green);margin-left:8px;">$${p.revenue}</span>` : ''}
+              </div>
+              <div style="display:flex;gap:4px;">
+                ${s !== 'idea' ? `<button class="btn btn-sm btn-secondary" onclick="changeStage('${p.id}','${stages[stages.indexOf(s)-1]}')">←</button>` : ''}
+                ${s !== 'growth' ? `<button class="btn btn-sm btn-primary" onclick="changeStage('${p.id}','${stages[stages.indexOf(s)+1]}')">→</button>` : ''}
+              </div>
+            </div>
+          `).join('') : '<p style="color:var(--text3);font-size:13px;">Пусто</p>'}
+        </div>
+      `;
+    }).join('')}
+  `;
+}
+
+// === SETTINGS ===
+function renderSettings() {
+  return `
+    <div class="card">
+      <h2>💾 Данные</h2>
+      <p style="color:var(--text2);font-size:13px;margin-bottom:12px;">Экспортируй данные чтобы не потерять при обновлении сервера</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <a href="/api/export" class="btn btn-primary" download>📥 Скачать бэкап</a>
+        <button class="btn btn-secondary" onclick="showImport()">📤 Загрузить бэкап</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>🔧 Информация</h2>
+      <div style="font-size:13px;color:var(--text2);line-height:2;">
+        <div>📊 Всего проектов: ${STATE.stats.total_projects||0}</div>
+        <div>📦 В архиве: ${STATE.stats.archived_projects||0}</div>
+        <div>⚔️ Всего квестов: ${STATE.stats.total_quests||0}</div>
+        <div>✅ Выполнено: ${STATE.stats.completed_quests||0}</div>
+        <div>💬 Сообщений: ${STATE.stats.total_messages||0}</div>
+        <div>🔍 Ниш проанализировано: ${STATE.stats.niches_analyzed||0}</div>
+        <div>🏆 Достижений: ${STATE.stats.achievements_unlocked||0}/${STATE.stats.achievements_total||0}</div>
+        <div>🔥 Streak рекорд: ${STATE.player.max_streak||0} дней</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>❤️ Health Check</h2>
+      <button class="btn btn-secondary" onclick="checkHealth()">🏥 Проверить</button>
+      <div id="healthResult" style="margin-top:12px;"></div>
+    </div>
+  `;
+}
+
+function showImport() {
+  showModal('Загрузить бэкап', `
+    <div class="form-group">
+      <label>Выбери JSON файл</label>
+      <input type="file" id="importFile" accept=".json" style="padding:8px;">
+    </div>
+    <p style="color:var(--orange);font-size:12px;">⚠️ Это перезапишет все текущие данные!</p>
+  `, async () => {
+    const file = document.getElementById('importFile').files[0];
+    if(!file) return;
+    const text = await file.text();
+    try {
+      const data = JSON.parse(text);
+      const r = await api('/api/import','POST',data);
+      if(r?.ok) {
+        toast('📤 Данные восстановлены!','success');
+        closeModal();
+        await loadAll();
+      }
+    } catch(e) {
+      toast('❌ Неверный формат файла','error');
+    }
+  });
+}
+
+async function checkHealth() {
+  const r = await fetch('/health').then(r=>r.json());
+  document.getElementById('healthResult').innerHTML = `<pre style="font-size:12px;color:var(--green);background:var(--bg3);padding:12px;border-radius:8px;">${JSON.stringify(r,null,2)}</pre>`;
+}
+
+// === MODAL ===
+function showModal(title, content, onConfirm) {
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.id = 'modal';
+  modal.innerHTML = `
+    <div class="modal">
+      <h2>${title}</h2>
+      ${content}
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closeModal()">Отмена</button>
+        ${onConfirm ? '<button class="btn btn-primary" id="modalConfirm">Подтвердить</button>' : ''}
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  modal.querySelector('.modal-overlay')?.addEventListener('click', e => { if(e.target === modal) closeModal(); });
+  if(onConfirm) document.getElementById('modalConfirm').addEventListener('click', onConfirm);
+}
+
+function closeModal() {
+  document.getElementById('modal')?.remove();
+}
+
+// === SIDEBAR TOGGLE ===
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+}
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+}
+
+// === INIT ===
+loadAll();
 </script>
 </body>
 </html>
