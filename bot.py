@@ -1354,9 +1354,11 @@ def home():
 @app.route("/chat")
 def web_chat():
     try:
-        return render_template("index.html")
+        with open("templates/index.html", "r", encoding="utf-8") as f:
+            return f.read()
     except Exception as e:
-        return f"Template error: {e}", 500
+        return f"Error: {e}", 500
+        
 
 
 # ============================================================
